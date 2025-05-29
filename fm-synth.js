@@ -18,7 +18,7 @@ let nextNoteTime = 0;
 let scheduleAheadTime = 0.1; // Schedule 100ms ahead
 let lookaheadInterval = null;
 
-let tempo = 120; // BPM
+let tempo = 20; // Initial tempo set to 20 BPM
 let kickPulses = 4;
 let snarePulses = 2;
 let hihatPulses = 8;
@@ -90,10 +90,17 @@ function generateEuclideanRhythm(k, n, rotation = 0) {
 async function loadSample(url) {
   try {
     const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status} ${response.statusText}`);
     const arrayBuffer = await response.arrayBuffer();
-    return await audioCtx.decodeAudioData(arrayBuffer);
+    try {
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      log(`Successfully loaded sample: ${url}`);
+      return audioBuffer;
+    } catch (decodeErr) {
+      throw new Error(`Decoding error for ${url}: ${decodeErr.message}`);
+    }
   } catch (err) {
-    log(`Failed to load sample: ${err.message}`, true);
+    log(`Failed to load sample ${url}: ${err.message}`, true);
     return null;
   }
 }
@@ -111,15 +118,15 @@ async function initAudio() {
     // Load drum samples from local files
     if (!kickBuffer) {
       kickBuffer = await loadSample('kick.wav');
-      if (!kickBuffer) throw new Error("Failed to load kick sample");
+      if (!kickBuffer) log("Kick sample failed to load, but continuing", true);
     }
     if (!snareBuffer) {
       snareBuffer = await loadSample('snare.wav');
-      if (!snareBuffer) throw new Error("Failed to load snare sample");
+      if (!snareBuffer) log("Snare sample failed to load, but continuing", true);
     }
     if (!hihatBuffer) {
       hihatBuffer = await loadSample('hat.wav');
-      if (!hihatBuffer) throw new Error("Failed to load hi-hat sample");
+      if (!hihatBuffer) log("Hi-hat sample failed to load, but continuing", true);
     }
 
     // Create gain nodes for volume control
@@ -135,6 +142,11 @@ async function initAudio() {
     hihatGainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
     hihatGainNode.connect(audioCtx.destination);
 
+    // Check if at least one sample loaded
+    if (!kickBuffer && !snareBuffer && !hihatBuffer) {
+      throw new Error("All samples failed to load. Cannot proceed.");
+    }
+
     log("Audio initialized successfully");
     return true;
   } catch (err) {
@@ -145,8 +157,7 @@ async function initAudio() {
 
 function playSample(buffer, gainNode, time, pitch = 1.0) {
   if (!buffer) {
-    log("Cannot play sample: Buffer is null", true);
-    return;
+    return; // Silently skip if buffer is null
   }
   const source = audioCtx.createBufferSource();
   source.buffer = buffer;
@@ -201,9 +212,10 @@ async function stopAudio() {
 
 function updateTempo(distance) {
   const normalizedDistance = Math.min(Math.max(distance / distanceBand, 0), 1);
+  // Linear interpolation from 20 to 200 BPM based on distance
   tempo = reverseMapping 
-    ? 60 + (1 - normalizedDistance) * (240 - 60)
-    : 60 + normalizedDistance * (240 - 60);
+    ? 20 + (1 - normalizedDistance) * (200 - 20) // 200 to 20 BPM
+    : 20 + normalizedDistance * (200 - 20);     // 20 to 200 BPM
   document.getElementById("tempoValue").textContent = `${tempo.toFixed(1)} BPM`;
 }
 
@@ -247,6 +259,8 @@ async function startGpsTracking() {
       });
     });
     lockPosition = position.coords;
+    tempo = 20; // Start at 20 BPM when locking GPS
+    updateTempo(0); // Update display with initial 20 BPM
     log(`GPS position locked: Lat ${lockPosition.latitude.toFixed(4)}, Lon ${lockPosition.longitude.toFixed(4)}`);
 
     watchId = navigator.geolocation.watchPosition(
@@ -402,14 +416,14 @@ async function requestMotionPermission() {
       if (permission === "granted") {
         motionActive = true;
         window.addEventListener("devicemotion", handleMotion);
-        log("Motion access granted. Shake device to adjust drum pitch.");
+        log("Motion access granted. Shake device to adjust hi-hat frequency.");
       } else {
         log("Motion permission denied.", true);
       }
     } else {
       motionActive = true;
       window.addEventListener("devicemotion", handleMotion);
-      log("Motion enabled. Shake device to adjust drum pitch.");
+      log("Motion enabled. Shake device to adjust hi-hat frequency.");
     }
   } catch (err) {
     log("Motion error: " + err.message, true);
@@ -425,8 +439,11 @@ function handleMotion(event) {
   }
   const magnitude = Math.sqrt(accel.x ** 2 + accel.y ** 2 + accel.z ** 2);
   const mappedMagnitude = Math.min(magnitude, 10);
-  const pitch = 0.5 + (mappedMagnitude / 10) * 1.0; // 0.5 to 1.5
-  log(`Pitch adjusted: ${pitch.toFixed(2)}x (Shake: ${magnitude.toFixed(1)}g)`);
+  hihatPulses = Math.max(1, Math.min(16, Math.round(mappedMagnitude * 1.6))); // 0-10g maps to 1-16 pulses
+  document.getElementById("hihatPulses").value = hihatPulses;
+  document.getElementById("hihatPulsesValue").textContent = `${hihatPulses} pulses`;
+  document.getElementById("hihatPulses").setAttribute("aria-valuenow", hihatPulses);
+  log(`Hi-hat pulses adjusted: ${hihatPulses} (Shake: ${magnitude.toFixed(1)}g)`);
 }
 
 async function initLightSensor() {
@@ -652,7 +669,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   elements.hihatPulsesInput.addEventListener("input", async (e) => {
-    if (orientationActive) return; // Skip manual control if orientation is active
+    if (orientationActive || motionActive) return; // Skip manual control if orientation or motion is active
     await audioCtx?.resume();
     hihatPulses = parseInt(e.target.value);
     document.getElementById("hihatPulsesValue").textContent = `${hihatPulses} pulses`;
