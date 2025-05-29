@@ -694,6 +694,9 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
+  // Debug log to confirm button is found
+  console.log("Toggle Free Mode button found:", elements.toggleFreeModeBtn);
+
   elements.lockBtn.addEventListener("click", async () => {
     console.log("Lock GPS button clicked");
     freeMode = false;
