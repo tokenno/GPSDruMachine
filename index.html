@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device=device-width, initial-scale=1.0">
-  <title>GPS Euclidean Machine</title>
+  <title>GPS Euclidean Machine - Professional Dark Theme</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #1a1a1a; color: #e0e0e0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
@@ -44,8 +44,10 @@
       transition: background-color 0.3s; 
       display: inline-block !important; 
     }
-    button:active { background-color: #2a6eb4; } /* Immediate press effect */
-    button.pressed { background-color: #357abd; } /* Toggled pressed state */
+    button:hover { background-color: #357abd; }
+    button:active { background-color: #b71c1c; } /* Darker red for active press */
+    button.pressed { background-color: #d32f2f !important; } /* Red for toggled state */
+    button.pressed:hover { background-color: #b71c1c !important; } /* Darker red on hover when pressed */
     .control-group { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
     label { font-size: 1rem; margin-right: 10px; color: #b0b0b0; }
     input[type="range"] { width: 150px; accent-color: #4a90e2; }
@@ -174,3 +176,4 @@
   <script src="fm-synth.js"></script>
 </body>
 </html>
+       

@@ -716,6 +716,7 @@ document.addEventListener("DOMContentLoaded", () => {
     button.addEventListener("click", () => {
       buttonStates[button.id] = !buttonStates[button.id];
       button.classList.toggle("pressed", buttonStates[button.id]);
+      console.log(`Button ${button.id} toggled to ${buttonStates[button.id] ? "pressed" : "not pressed"}`);
     });
   });
 
