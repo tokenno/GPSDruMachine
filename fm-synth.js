@@ -110,13 +110,13 @@ async function initAudio() {
 
     // Load drum samples (replace with actual URLs)
     if (!kickBuffer) {
-      kickBuffer = await loadSample('https://example.com/kick.wav');
+      kickBuffer = await loadSample('/kick.wav');
     }
     if (!snareBuffer) {
-      snareBuffer = await loadSample('https://example.com/snare.wav');
+      snareBuffer = await loadSample('/snare.wav');
     }
     if (!hihatBuffer) {
-      hihatBuffer = await loadSample('https://example.com/hihat.wav');
+      hihatBuffer = await loadSample('/hihat.wav');
     }
 
     // Create gain nodes for volume control
