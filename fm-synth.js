@@ -29,11 +29,18 @@ let kickGainNode = null;
 let snareGainNode = null;
 let hihatGainNode = null;
 
+let ws = null;
+let sessionId = null;
+let isSharer = false;
+
 const statusEl = document.getElementById("status");
 let compassSection = null;
 let compassSvg = null;
 let directionArrow = null;
 let distanceDisplay = null;
+let freeMode = false; // New flag for free movement mode
+let lastPosition = null; // Track the last position for speed calculation
+let lastUpdateTime = null; // Track the last update time
 
 function log(msg, isError = false) {
   console.log(msg);
@@ -240,17 +247,26 @@ async function stopAudio() {
   }
 }
 
-function updateTempo(distance) {
-  const normalizedDistance = Math.min(Math.max(distance / distanceBand, 0), 1);
-  // Linear interpolation from 20 to 200 BPM based on distance
-  tempo = reverseMapping 
-    ? 20 + (1 - normalizedDistance) * (200 - 20) // 200 to 20 BPM
-    : 20 + normalizedDistance * (200 - 20);     // 20 to 200 BPM
+function updateTempo(distanceOrSpeed) {
+  let newTempo;
+  if (freeMode) {
+    // Map speed (m/s) to tempo (20-200 BPM)
+    const maxSpeed = 5; // Assume 5 m/s (approx. 18 km/h or 11 mph) as max speed
+    const normalizedSpeed = Math.min(Math.max(distanceOrSpeed / maxSpeed, 0), 1);
+    newTempo = 20 + normalizedSpeed * (200 - 20); // Linear interpolation from 20 to 200 BPM
+  } else {
+    // Existing lock-based tempo calculation
+    const normalizedDistance = Math.min(Math.max(distanceOrSpeed / distanceBand, 0), 1);
+    newTempo = reverseMapping 
+      ? 20 + (1 - normalizedDistance) * (200 - 20) // 200 to 20 BPM
+      : 20 + normalizedDistance * (200 - 20);     // 20 to 200 BPM
+  }
+  tempo = newTempo;
   document.getElementById("tempoValue").textContent = `${tempo.toFixed(1)} BPM`;
 }
 
 function updateCompassDisplay(distance, bearing) {
-  if (!compassSection || !directionArrow || !distanceDisplay) return;
+  if (!compassSection || !directionArrow || !distanceDisplay || freeMode) return;
   const arrowRotation = bearing - currentHeading;
   directionArrow.setAttribute('transform', `rotate(${-arrowRotation}, 100, 100)`);
   distanceDisplay.textContent = `${distance.toFixed(0)}m`;
@@ -281,33 +297,50 @@ async function startGpsTracking() {
   }
 
   try {
-    const position = await new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      });
-    });
-    lockPosition = position.coords;
-    tempo = 20; // Start at 20 BPM when locking GPS
-    updateTempo(0); // Update display with initial 20 BPM
-    nextNoteTime = audioCtx.currentTime; // Reset to apply new tempo immediately
-    log(`GPS position locked: Lat ${lockPosition.latitude.toFixed(4)}, Lon ${lockPosition.longitude.toFixed(4)}`);
-    log(`Initial tempo set to: ${tempo} BPM`);
-
     watchId = navigator.geolocation.watchPosition(
       pos => {
-        if (!lockPosition) {
-          log("Lock position not set", true);
-          return;
+        const currentTime = Date.now() / 1000; // Time in seconds
+        if (!freeMode) {
+          if (!lockPosition) {
+            lockPosition = pos.coords;
+            tempo = 20; // Start at 20 BPM when locking GPS
+            updateTempo(0); // Update display with initial 20 BPM
+            nextNoteTime = audioCtx.currentTime; // Reset to apply new tempo immediately
+            log(`GPS position locked: Lat ${lockPosition.latitude.toFixed(4)}, Lon ${lockPosition.longitude.toFixed(4)}`);
+            log(`Initial tempo set to: ${tempo} BPM`);
+          }
+          const distance = calculateDistance(pos.coords, lockPosition);
+          updateTempo(distance);
+          if (isPlaying) scheduleNotes();
+          
+          if (currentHeading !== null) {
+            const bearing = calculateBearing(pos.coords, lockPosition);
+            updateCompassDisplay(distance, bearing);
+          }
+        } else {
+          // Free mode: Calculate speed and update tempo
+          if (lastPosition && lastUpdateTime) {
+            const distance = calculateDistance(pos.coords, lastPosition);
+            const timeDiff = currentTime - lastUpdateTime;
+            const speed = timeDiff > 0 ? distance / timeDiff : 0; // Speed in m/s
+            updateTempo(speed);
+            if (isPlaying) scheduleNotes();
+            log(`Speed: ${speed.toFixed(2)} m/s, Tempo: ${tempo.toFixed(1)} BPM`);
+          }
+          lastPosition = pos.coords;
+          lastUpdateTime = currentTime;
         }
-        const distance = calculateDistance(pos.coords, lockPosition);
-        updateTempo(distance);
-        if (isPlaying) scheduleNotes();
-        
-        if (currentHeading !== null) {
-          const bearing = calculateBearing(pos.coords, lockPosition);
-          updateCompassDisplay(distance, bearing);
+
+        // Update WebSocket if sharing
+        if (isSharer && ws?.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: 'update',
+              sessionId,
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+            })
+          );
         }
       },
       err => {
@@ -556,80 +589,113 @@ async function initMicrophone() {
   }
 }
 
+function connectWebSocket() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+
+  const wsUrl = 'wss://gps-tracking-server.onrender.com'; // Replace with your Render URL
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    log('Connected to server');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.status === 'sharing') {
+        sessionId = data.sessionId;
+        document.getElementById('sessionId').value = sessionId;
+        log('Session ID generated. Share it with others.');
+      } else if (data.status === 'joined') {
+        log('Joined session. Waiting for location updates...');
+      } else if (data.status === 'error') {
+        log(data.message, true);
+      } else if (data.lat && data.lon) {
+        // Tracker received updated coordinates
+        lockPosition = { latitude: data.lat, longitude: data.lon };
+        log(`Received update: Lat ${data.lat.toFixed(4)}, Lon ${data.lon.toFixed(4)}`);
+        if (!isPlaying) startScheduler();
+      }
+    } catch (err) {
+      log('Error processing server message: ' + err.message, true);
+    }
+  };
+
+  ws.onclose = () => {
+    log('Disconnected from server. Retrying...');
+    ws = null;
+    setTimeout(connectWebSocket, 5000);
+  };
+
+  ws.onerror = (err) => {
+    log('WebSocket error: ' + err.message, true);
+  };
+}
+
 function shareLockPoint() {
-  if (!lockPosition) {
-    log("No lock position set. Please lock GPS first.", true);
+  if (!lockPosition && !freeMode) {
+    log('No lock position set. Please lock GPS first.', true);
     return;
   }
 
-  const { latitude, longitude } = lockPosition;
-  const baseUrl = window.location.origin || "https://drum-machine.app"; // Fallback URL
-  const shareUrl = `${baseUrl}?lat=${latitude.toFixed(6)}&lon=${longitude.toFixed(6)}`;
-  const shareInput = document.getElementById("shareUrl");
-  shareInput.value = shareUrl;
-  shareInput.select();
-  try {
-    navigator.clipboard.writeText(shareUrl);
-    log("Lock Point URL copied to clipboard! Share it with another user.");
-  } catch (err) {
-    log("Failed to copy URL to clipboard. Please copy manually.", true);
-  }
+  connectWebSocket();
+  sessionId = Math.random().toString(36).substring(2, 10); // Generate a random session ID
+  isSharer = true;
+  ws.send(JSON.stringify({ type: 'share', sessionId, userType: 'sharer' }));
+
+  // Start periodic updates
+  setInterval(() => {
+    if (isSharer && ws?.readyState === WebSocket.OPEN) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!freeMode) {
+            lockPosition = pos.coords;
+          }
+          ws.send(
+            JSON.stringify({
+              type: 'update',
+              sessionId,
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+            })
+          );
+        },
+        (err) => log('GPS update error: ' + err.message, true),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+  }, 5000); // Update every 5 seconds
 }
 
 function joinLockPoint() {
-  const joinInput = document.getElementById("joinUrl").value;
-  if (!joinInput) {
-    log("Please enter a shared URL to join.", true);
+  const joinSessionId = document.getElementById('joinSessionId').value;
+  if (!joinSessionId) {
+    log('Please enter a session ID to join.', true);
     return;
   }
 
-  try {
-    const url = new URL(joinInput);
-    const lat = parseFloat(url.searchParams.get("lat"));
-    const lon = parseFloat(url.searchParams.get("lon"));
+  connectWebSocket();
+  sessionId = joinSessionId;
+  isSharer = false;
+  ws.send(JSON.stringify({ type: 'join', sessionId, userType: 'tracker' }));
 
-    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      log("Invalid coordinates in the URL.", true);
-      return;
-    }
+  // Show compass and start tracking
+  compassSection.style.display = 'block';
+}
 
-    // Update lockPosition with the shared coordinates
-    lockPosition = { latitude: lat, longitude: lon };
-    tempo = 20; // Reset tempo to 20 BPM
-    updateTempo(0);
-    nextNoteTime = audioCtx.currentTime; // Reset to apply new tempo immediately
-    log(`Locked onto shared position: Lat ${lat.toFixed(4)}, Lon ${lon.toFixed(4)}`);
-
-    // Start tracking and playing
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
-    }
-    watchId = navigator.geolocation.watchPosition(
-      pos => {
-        if (!lockPosition) {
-          log("Lock position not set", true);
-          return;
-        }
-        const distance = calculateDistance(pos.coords, lockPosition);
-        updateTempo(distance);
-        if (isPlaying) scheduleNotes();
-        
-        if (currentHeading !== null) {
-          const bearing = calculateBearing(pos.coords, lockPosition);
-          updateCompassDisplay(distance, bearing);
-        }
-      },
-      err => {
-        log(`GPS error: ${err.message}`, true);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-
-    compassSection.style.display = "block";
-    if (!isPlaying) startScheduler();
-  } catch (err) {
-    log(`Failed to join Lock Point: ${err.message}`, true);
+function toggleFreeMode() {
+  freeMode = !freeMode;
+  if (freeMode) {
+    log('Free Mode enabled. Tempo now based on movement speed.');
+    lastPosition = null;
+    lastUpdateTime = null;
+    lockPosition = null; // Clear lock position in free mode
+    compassSection.style.display = 'none'; // Hide compass in free mode
+    if (watchId === null) startGpsTracking();
+  } else {
+    log('Free Mode disabled. Returning to lock-based mode.');
+    compassSection.style.display = 'block'; // Show compass in lock mode
+    if (watchId === null) startGpsTracking();
   }
 }
 
@@ -655,6 +721,7 @@ document.addEventListener("DOMContentLoaded", () => {
     distanceBandSelect: document.getElementById("distanceBand"),
     shareLockBtn: document.getElementById("shareLockBtn"),
     joinLockBtn: document.getElementById("joinLockBtn"),
+    toggleFreeModeBtn: document.getElementById("toggleFreeModeBtn"),
   };
 
   if (Object.values(elements).some(el => !el)) {
@@ -665,6 +732,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   elements.lockBtn.addEventListener("click", async () => {
     console.log("Lock GPS button clicked");
+    freeMode = false; // Ensure free mode is off when locking GPS
     const audioSuccess = await initAudio();
     if (audioSuccess) {
       await startGpsTracking();
@@ -804,5 +872,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (audioSuccess) {
       joinLockPoint();
     }
+  });
+
+  elements.toggleFreeModeBtn.addEventListener("click", () => {
+    console.log("Toggle Free Mode button clicked");
+    toggleFreeMode();
+    if (watchId === null && !freeMode) startGpsTracking(); // Start tracking if switching to lock mode
   });
 });
