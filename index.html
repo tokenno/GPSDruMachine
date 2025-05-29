@@ -179,6 +179,13 @@
         <button id="testBtn">Test Audio</button>
         <button id="stopBtn">Stop Audio</button>
       </div>
+      <div class="control-group">
+        <label for="modeSelect">Mode:</label>
+        <select id="modeSelect">
+          <option value="lock">Lock Mode</option>
+          <option value="speed">Speed Mode</option>
+        </select>
+      </div>
     </div>
 
     <!-- Share and Join Lock Point -->
@@ -186,11 +193,11 @@
       <h2>Share Location</h2>
       <div class="control-group">
         <button id="shareLockBtn">Share Lock Point</button>
-        <input type="text" id="shareUrl" readonly placeholder="Click 'Share Lock Point' to generate URL">
+        <input type="text" id="sessionId" readonly placeholder="Click 'Share Lock Point' to generate session ID">
       </div>
       <div class="control-group">
         <button id="joinLockBtn">Join Lock Point</button>
-        <input type="text" id="joinUrl" placeholder="Paste shared URL here">
+        <input type="text" id="joinSessionId" placeholder="Enter session ID to join">
       </div>
     </div>
 
