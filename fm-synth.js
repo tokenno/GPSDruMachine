@@ -614,6 +614,12 @@ function joinLockPoint() {
     tempo = 20;
     updateTempo(0);
     nextNoteTime = audioCtx.currentTime;
+
+    // Mute audio initially until within 100 meters
+    if (kickGainNode) kickGainNode.gain.setValueAtTime(0.0, audioCtx.currentTime);
+    if (snareGainNode) snareGainNode.gain.setValueAtTime(0.0, audioCtx.currentTime);
+    if (hihatGainNode) hihatGainNode.gain.setValueAtTime(0.0, audioCtx.currentTime);
+
     log(`Locked onto shared position: Lat ${lat.toFixed(4)}, Lon ${lon.toFixed(4)}`);
 
     if (watchId !== null) {
@@ -629,6 +635,20 @@ function joinLockPoint() {
         const distance = calculateDistance(pos.coords, lockPosition);
         updateTempo(distance);
         if (isPlaying) scheduleNotes();
+
+        // Unmute audio when within 100 meters
+        if (distance <= 100) {
+          if (kickGainNode) kickGainNode.gain.linearRampToValueAtTime(1.0, audioCtx.currentTime + 0.1);
+          if (snareGainNode) snareGainNode.gain.linearRampToValueAtTime(1.0, audioCtx.currentTime + 0.1);
+          if (hihatGainNode) hihatGainNode.gain.linearRampToValueAtTime(0.7, audioCtx.currentTime + 0.1);
+          log("Audio unmuted - within 100 meters of lock point.");
+        } else {
+          if (kickGainNode) kickGainNode.gain.setValueAtTime(0.0, audioCtx.currentTime);
+          if (snareGainNode) snareGainNode.gain.setValueAtTime(0.0, audioCtx.currentTime);
+          if (hihatGainNode) hihatGainNode.gain.setValueAtTime(0.0, audioCtx.currentTime);
+          log(`Audio muted - ${distance.toFixed(0)} meters from lock point.`);
+        }
+
         if (currentHeading !== null) {
           const bearing = calculateBearing(pos.coords, lockPosition);
           updateCompassDisplay(distance, bearing);
@@ -652,7 +672,7 @@ function toggleFreeMode() {
   }
   if (freeMode) {
     log('Free Mode enabled. Tempo now based on movement speed.');
-    lockPosition = null;
+    lockPosition = null; // Deactivate Lock GPS Point
     compassSection.style.display = 'none';
   } else {
     log('Free Mode disabled. Returning to lock-based mode.');
