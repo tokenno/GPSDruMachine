@@ -116,7 +116,7 @@ async function initAudio() {
       snareBuffer = await loadSample('/snare.wav');
     }
     if (!hihatBuffer) {
-      hihatBuffer = await loadSample('/hihat.wav');
+      hihatBuffer = await loadSample('/hihat.aif');
     }
 
     // Create gain nodes for volume control
