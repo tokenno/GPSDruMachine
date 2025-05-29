@@ -110,13 +110,13 @@ async function initAudio() {
 
     // Load drum samples (replace with actual URLs)
     if (!kickBuffer) {
-      kickBuffer = await loadSample('/kick.wav');
+      kickBuffer = await loadSample('https://github.com/tokenno/GPSDruMachine/blob/main/kick.wav');
     }
     if (!snareBuffer) {
-      snareBuffer = await loadSample('/snare.wav');
+      snareBuffer = await loadSample('https://github.com/tokenno/GPSDruMachine/blob/main/snare.wav');
     }
     if (!hihatBuffer) {
-      hihatBuffer = await loadSample('/hihat.aif');
+      hihatBuffer = await loadSample('https://github.com/tokenno/GPSDruMachine/blob/main/hat.aif');
     }
 
     // Create gain nodes for volume control
