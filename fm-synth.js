@@ -108,15 +108,18 @@ async function initAudio() {
       log("Audio context resumed");
     }
 
-    // Load drum samples (replace with actual URLs)
+    // Load drum samples from local files
     if (!kickBuffer) {
-      kickBuffer = await loadSample('/kick.wav');
+      kickBuffer = await loadSample('kick.wav');
+      if (!kickBuffer) throw new Error("Failed to load kick sample");
     }
     if (!snareBuffer) {
-      snareBuffer = await loadSample('/snare.wav');
+      snareBuffer = await loadSample('snare.wav');
+      if (!snareBuffer) throw new Error("Failed to load snare sample");
     }
     if (!hihatBuffer) {
-      hihatBuffer = await loadSample('/hat.aif');
+      hihatBuffer = await loadSample('hihat.wav');
+      if (!hihatBuffer) throw new Error("Failed to load hi-hat sample");
     }
 
     // Create gain nodes for volume control
@@ -132,16 +135,19 @@ async function initAudio() {
     hihatGainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
     hihatGainNode.connect(audioCtx.destination);
 
-    log("Audio initialized");
+    log("Audio initialized successfully");
     return true;
   } catch (err) {
-    log("Audio error: " + err.message, true);
+    log("Audio initialization error: " + err.message, true);
     return false;
   }
 }
 
 function playSample(buffer, gainNode, time, pitch = 1.0) {
-  if (!buffer) return;
+  if (!buffer) {
+    log("Cannot play sample: Buffer is null", true);
+    return;
+  }
   const source = audioCtx.createBufferSource();
   source.buffer = buffer;
   source.playbackRate.setValueAtTime(pitch, time);
@@ -531,10 +537,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   elements.lockBtn.addEventListener("click", async () => {
     console.log("Lock GPS button clicked");
-    await initAudio();
-    await startGpsTracking();
-    startScheduler();
-    compassSection.style.display = "block";
+    const audioSuccess = await initAudio();
+    if (audioSuccess) {
+      await startGpsTracking();
+      startScheduler();
+      compassSection.style.display = "block";
+    }
   });
 
   elements.testBtn.addEventListener("click", async () => {
