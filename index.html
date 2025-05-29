@@ -2,104 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Best So Far</title>
+  <meta name="viewport" content="width=device=device-width, initial-scale=1.0">
+  <title>GPS Drum Machine</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #222;
-      color: #e0e0e0;
-      margin: 0;
-      padding: 20px;
-    }
-    .container {
-      max-width: 600px;
-      margin: 0 auto;
-    }
-    .section {
-      margin-bottom: 20px;
-      background-color: #333;
-      padding: 15px;
-      border-radius: 5px;
-    }
-    h2 {
-      margin-top: 0;
-      font-size: 1.2em;
-      color: #4a90e2;
-    }
-    .control-group {
-      margin-bottom: 10px;
-    }
-    button {
-      background-color: #4a90e2;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-right: 5px;
-    }
-    button:hover {
-      background-color: #357abd;
-    }
-    input[type="range"] {
-      width: 100px;
-      vertical-align: middle;
-    }
-    input[type="text"] {
-      background-color: #444;
-      color: #e0e0e0;
-      border: 1px solid #555;
-      padding: 5px;
-      border-radius: 4px;
-    }
-    label {
-      margin-right: 10px;
-    }
-    select {
-      background-color: #444;
-      color: #e0e0e0;
-      border: 1px solid #555;
-      padding: 5px;
-      border-radius: 4px;
-    }
-    .status {
-      padding: 10px;
-      margin-bottom: 20px;
-      border-radius: 4px;
-    }
-    .status.success {
-      background-color: #2ecc71;
-      color: #fff;
-    }
-    .status.error {
-      background-color: #e74c3c;
-      color: #fff;
-    }
-    #compass-section {
-      display: none;
-      text-align: center;
-    }
-    #compass {
-      width: 200px;
-      height: 200px;
-      margin: 0 auto;
-    }
-    #distance-display {
-      margin-top: 10px;
-      font-size: 1.1em;
-    }
-    #video {
-      width: 100%;
-      max-width: 300px;
-      margin-top: 10px;
-    }
-    .hidden {
-      display: none;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #1a1a1a; color: #e0e0e0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    h1 { color: #ffffff; font-size: 2.5rem; margin-bottom: 20px; text-align: center; }
+    .container { background-color: #2a2a2a; border-radius: 10px; padding: 20px; width: 100%; max-width: 600px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); }
+    .section { margin-bottom: 20px; padding: 15px; background-color: #353535; border-radius: 8px; }
+    .section h2 { color: #4a90e2; font-size: 1.5rem; margin-bottom: 10px; }
+    .status { padding: 10px; border-radius: 5px; margin-bottom: 15px; text-align: center; font-size: 1rem; }
+    .status.success { background-color: #2e7d32; color: #ffffff; }
+    .status.error { background-color: #d32f2f; color: #ffffff; }
+    button { background-color: #4a90e2; color: #ffffff; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1rem; margin: 5px; transition: background-color 0.3s; }
+    button:hover { background-color: #357abd; }
+    button:disabled { background-color: #666; cursor: not-allowed; }
+    .control-group { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+    label { font-size: 1rem; margin-right: 10px; color: #b0b0b0; }
+    input[type="range"] { width: 150px; accent-color: #4a90e2; }
+    input[type="text"] { background-color: #424242; color: #e0e0e0; border: 1px solid #666; padding: 5px; border-radius: 5px; font-size: 1rem; width: 100%; max-width: 300px; }
+    select { background-color: #424242; color: #e0e0e0; border: 1px solid #666; padding: 5px; border-radius: 5px; font-size: 1rem; }
+    #tempoValue, #kickPulsesValue, #snarePulsesValue, #hihatPulsesValue { color: #4a90e2; margin-left: 10px; font-size: 1rem; }
+    #compass-section { display: none; text-align: center; margin-top: 20px; }
+    #compass { width: 200px; height: 200px; margin: 0 auto; }
+    #distance-display { color: #4a90e2; font-size: 1.2rem; margin-top: 10px; }
+    #video { display: none; width: 100%; max-width: 300px; margin: 10px auto; border-radius: 5px; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
+  <h1>GPS Euclidean Drum Machine</h1>
   <div class="container">
     <div id="status" class="status">Status: Ready</div>
 
@@ -111,6 +43,7 @@
         <button id="testBtn">Test Audio</button>
         <button id="stopBtn">Stop Audio</button>
         <button id="toggleFreeModeBtn">Toggle Free Mode</button>
+        <span id="freeModeStatus">Off</span>
       </div>
     </div>
 
@@ -193,8 +126,8 @@
       <div id="distance-display">0m</div>
     </div>
 
-    <!-- Camera Feed -->
     <video id="video" class="hidden" autoplay playsinline></video>
+ <a href="http://tokeno.net">tokeno.net</a>
   </div>
 
   <script src="fm-synth.js"></script>

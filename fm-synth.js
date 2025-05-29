@@ -32,15 +32,16 @@ let hihatGainNode = null;
 let ws = null;
 let sessionId = null;
 let isSharer = false;
+let freeMode = false;
+let lastPosition = null;
+let lastUpdateTime = null;
 
 const statusEl = document.getElementById("status");
 let compassSection = null;
 let compassSvg = null;
 let directionArrow = null;
 let distanceDisplay = null;
-let freeMode = false;
-let lastPosition = null;
-let lastUpdateTime = null;
+let freeModeStatus = null;
 
 function log(msg, isError = false) {
   console.log(msg);
@@ -248,7 +249,7 @@ async function stopAudio() {
 function updateTempo(distanceOrSpeed) {
   let newTempo;
   if (freeMode) {
-    const maxSpeed = 5;
+    const maxSpeed = 5; // meters per second
     const normalizedSpeed = Math.min(Math.max(distanceOrSpeed / maxSpeed, 0), 1);
     newTempo = 20 + normalizedSpeed * (200 - 20);
   } else {
@@ -326,7 +327,7 @@ async function startGpsTracking() {
           lastUpdateTime = currentTime;
         }
 
-        if (isSharer && ws?.readyState === WebSocket.OPEN) {
+        if (isSharer && ws?.readyState === WebSocket.OPEN && !freeMode) {
           ws.send(
             JSON.stringify({
               type: 'update',
@@ -585,7 +586,7 @@ async function initMicrophone() {
 function connectWebSocket() {
   if (ws && ws.readyState === WebSocket.OPEN) return;
 
-  const wsUrl = 'wss://gps-tracking-server.onrender.com';
+  const wsUrl = 'wss://gps-tracking-server.onrender.com'; // Replace with your Render URL
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
@@ -593,6 +594,7 @@ function connectWebSocket() {
   };
 
   ws.onmessage = (event) => {
+    if (freeMode) return; // Ignore server messages in free mode
     try {
       const data = JSON.parse(event.data);
       if (data.status === 'sharing') {
@@ -616,11 +618,11 @@ function connectWebSocket() {
   ws.onclose = () => {
     log('Disconnected from server. Retrying...');
     ws = null;
-    setTimeout(connectWebSocket, 5000);
+    setTimeout(connectWebSocket, 1000); // Faster retry
   };
 
   ws.onerror = (err) => {
-    log('WebSocket error: ' + err.message, true);
+    log('WebSocket error: ' + (err.message || 'Unknown error'), true);
   };
 }
 
@@ -630,18 +632,30 @@ function shareLockPoint() {
     return;
   }
 
+  if (freeMode) {
+    const { latitude, longitude } = lockPosition || lastPosition;
+    const baseUrl = window.location.origin || 'https://drum-machine.app';
+    const shareUrl = `${baseUrl}?lat=${latitude.toFixed(6)}&lon=${longitude.toFixed(6)}`;
+    document.getElementById('sessionId').value = shareUrl;
+    try {
+      navigator.clipboard.writeText(shareUrl);
+      log('Lock Point URL copied to clipboard! Share it with another user.');
+    } catch (err) {
+      log('Failed to copy URL to clipboard. Please copy manually.', true);
+    }
+    return;
+  }
+
   connectWebSocket();
   sessionId = Math.random().toString(36).substring(2, 10);
   isSharer = true;
   ws.send(JSON.stringify({ type: 'share', sessionId, userType: 'sharer' }));
 
   setInterval(() => {
-    if (isSharer && ws?.readyState === WebSocket.OPEN) {
+    if (isSharer && ws?.readyState === WebSocket.OPEN && !freeMode) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          if (!freeMode) {
-            lockPosition = pos.coords;
-          }
+          lockPosition = pos.coords;
           ws.send(
             JSON.stringify({
               type: 'update',
@@ -661,7 +675,31 @@ function shareLockPoint() {
 function joinLockPoint() {
   const joinSessionId = document.getElementById('joinSessionId').value;
   if (!joinSessionId) {
-    log('Please enter a session ID to join.', true);
+    log('Please enter a session ID or URL to join.', true);
+    return;
+  }
+
+  if (freeMode) {
+    try {
+      const url = new URL(joinSessionId);
+      const lat = parseFloat(url.searchParams.get('lat'));
+      const lon = parseFloat(url.searchParams.get('lon'));
+
+      if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        log('Invalid coordinates in the URL.', true);
+        return;
+      }
+
+      lockPosition = { latitude: lat, longitude: lon };
+      tempo = 20;
+      updateTempo(0);
+      nextNoteTime = audioCtx.currentTime;
+      log(`Locked onto shared position: Lat ${lat.toFixed(4)}, Lon ${lon.toFixed(4)}`);
+      startGpsTracking();
+      if (!isPlaying) startScheduler();
+    } catch (err) {
+      log(`Failed to join Lock Point: ${err.message}`, true);
+    }
     return;
   }
 
@@ -675,210 +713,209 @@ function joinLockPoint() {
 
 function toggleFreeMode() {
   freeMode = !freeMode;
+  freeModeStatus.textContent = freeMode ? 'On' : 'Off';
   if (freeMode) {
     log('Free Mode enabled. Tempo now based on movement speed.');
-    lastPosition = null;
-    lastUpdateTime = null;
     lockPosition = null;
     compassSection.style.display = 'none';
-    if (watchId === null) startGpsTracking();
+    if (ws) ws.close();
+    ws = null;
   } else {
     log('Free Mode disabled. Returning to lock-based mode.');
     compassSection.style.display = 'block';
-    if (watchId === null) startGpsTracking();
+    connectWebSocket();
   }
+  startGpsTracking();
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  setTimeout(() => {
-    compassSection = document.getElementById("compass-section");
-    compassSvg = document.getElementById("compass");
-    directionArrow = document.getElementById("direction-arrow");
-    distanceDisplay = document.getElementById("distance-display");
+  compassSection = document.getElementById("compass-section");
+  compassSvg = document.getElementById("compass");
+  directionArrow = document.getElementById("direction-arrow");
+  distanceDisplay = document.getElementById("distance-display");
+  freeModeStatus = document.getElementById("freeModeStatus");
 
-    const elements = {
-      lockBtn: document.getElementById("lockBtn"),
-      testBtn: document.getElementById("testBtn"),
-      stopBtn: document.getElementById("stopBtn"),
-      toggleDirectionBtn: document.getElementById("toggleDirectionBtn"),
-      orientationBtn: document.getElementById("orientationBtn"),
-      motionBtn: document.getElementById("motionBtn"),
-      cameraBtn: document.getElementById("cameraBtn"),
-      lightSensorBtn: document.getElementById("lightSensorBtn"),
-      micBtn: document.getElementById("micBtn"),
-      kickPulsesInput: document.getElementById("kickPulses"),
-      snarePulsesInput: document.getElementById("snarePulses"),
-      hihatPulsesInput: document.getElementById("hihatPulses"),
-      distanceBandSelect: document.getElementById("distanceBand"),
-      shareLockBtn: document.getElementById("shareLockBtn"),
-      joinLockBtn: document.getElementById("joinLockBtn"),
-      toggleFreeModeBtn: document.getElementById("toggleFreeModeBtn"),
-    };
+  const elements = {
+    lockBtn: document.getElementById("lockBtn"),
+    testBtn: document.getElementById("testBtn"),
+    stopBtn: document.getElementById("stopBtn"),
+    toggleDirectionBtn: document.getElementById("toggleDirectionBtn"),
+    orientationBtn: document.getElementById("orientationBtn"),
+    motionBtn: document.getElementById("motionBtn"),
+    cameraBtn: document.getElementById("cameraBtn"),
+    lightSensorBtn: document.getElementById("lightSensorBtn"),
+    micBtn: document.getElementById("micBtn"),
+    kickPulsesInput: document.getElementById("kickPulses"),
+    snarePulsesInput: document.getElementById("snarePulses"),
+    hihatPulsesInput: document.getElementById("hihatPulses"),
+    distanceBandSelect: document.getElementById("distanceBand"),
+    shareLockBtn: document.getElementById("shareLockBtn"),
+    joinLockBtn: document.getElementById("joinLockBtn"),
+    toggleFreeModeBtn: document.getElementById("toggleFreeModeBtn"),
+  };
 
-    if (Object.values(elements).some(el => !el)) {
-      const missing = Object.keys(elements).filter(key => !elements[key]);
-      log(`One or more UI elements not found. Missing IDs: ${missing.join(', ')}`, true);
-      console.error("Missing elements:", missing);
-      return;
+  if (Object.values(elements).some(el => !el)) {
+    const missing = Object.keys(elements).filter(key => !elements[key]);
+    log(`One or more UI elements not found. Missing IDs: ${missing.join(', ')}`, true);
+    console.error("Missing elements:", missing);
+    return;
+  }
+
+  elements.lockBtn.addEventListener("click", async () => {
+    console.log("Lock GPS button clicked");
+    freeMode = false;
+    const audioSuccess = await initAudio();
+    if (audioSuccess) {
+      log("Starting GPS tracking...");
+      await startGpsTracking();
+      log("Starting audio scheduler...");
+      startScheduler();
+      compassSection.style.display = "block";
+    } else {
+      log("Audio initialization failed. Check console for details.", true);
     }
+  });
 
-    elements.lockBtn.addEventListener("click", async () => {
-      console.log("Lock GPS button clicked");
-      freeMode = false;
-      const audioSuccess = await initAudio();
-      if (audioSuccess) {
-        log("Starting GPS tracking...");
-        await startGpsTracking();
-        log("Starting audio scheduler...");
-        startScheduler();
-        compassSection.style.display = "block";
-      } else {
-        log("Audio initialization failed. Check console for details.", true);
+  elements.testBtn.addEventListener("click", async () => {
+    console.log("Test Audio button clicked");
+    const audioSuccess = await initAudio();
+    if (audioSuccess) {
+      log("Playing test audio...");
+      updateTempo(10);
+      startScheduler();
+    } else {
+      log("Audio initialization failed. Check console for details.", true);
+    }
+  });
+
+  elements.stopBtn.addEventListener("click", async () => {
+    console.log("Stop Audio button clicked");
+    await stopAudio();
+  });
+
+  elements.toggleDirectionBtn.addEventListener("click", async () => {
+    await audioCtx?.resume();
+    reverseMapping = !reverseMapping;
+    log(`Tempo mapping ${reverseMapping ? "reversed" : "normal"}`);
+  });
+
+  elements.orientationBtn.addEventListener("click", async () => {
+    console.log("Toggle Orientation button clicked");
+    orientationActive = !orientationActive;
+    if (orientationActive) {
+      await initAudio();
+      await requestOrientationPermission();
+    } else {
+      window.removeEventListener("deviceorientation", handleOrientation);
+      log("Orientation disabled");
+    }
+  });
+
+  elements.cameraBtn.addEventListener("click", async () => {
+    console.log("Toggle Camera button clicked");
+    cameraActive = !cameraActive;
+    if (cameraActive) {
+      await initAudio();
+      await initCamera();
+    } else {
+      log("Camera disabled");
+      const video = document.getElementById("video");
+      if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+        video.classList.add("hidden");
       }
-    });
+    }
+  });
 
-    elements.testBtn.addEventListener("click", async () => {
-      console.log("Test Audio button clicked");
-      const audioSuccess = await initAudio();
-      if (audioSuccess) {
-        log("Playing test audio...");
-        updateTempo(10);
-        startScheduler();
-      } else {
-        log("Audio initialization failed. Check console for details.", true);
+  elements.motionBtn.addEventListener("click", async () => {
+    console.log("Toggle Accelerometer button clicked");
+    motionActive = !motionActive;
+    if (motionActive) {
+      await initAudio();
+      await requestMotionPermission();
+    } else {
+      window.removeEventListener("devicemotion", handleMotion);
+      log("Accelerometer disabled");
+    }
+  });
+
+  elements.lightSensorBtn.addEventListener("click", async () => {
+    console.log("Toggle Light Sensor button clicked");
+    lightSensorActive = !lightSensorActive;
+    if (lightSensorActive) {
+      await initAudio();
+      await initLightSensor();
+    } else {
+      log("Light sensor disabled");
+    }
+  });
+
+  elements.micBtn.addEventListener("click", async () => {
+    console.log("Toggle Microphone button clicked");
+    micActive = !micActive;
+    if (micActive) {
+      await initAudio();
+      await initMicrophone();
+    } else {
+      log("Microphone disabled");
+      if (micStream) {
+        micStream.getTracks().forEach(track => track.stop());
+        micStream = null;
       }
-    });
-
-    elements.stopBtn.addEventListener("click", async () => {
-      console.log("Stop Audio button clicked");
-      await stopAudio();
-    });
-
-    elements.toggleDirectionBtn.addEventListener("click", async () => {
-      await audioCtx?.resume();
-      reverseMapping = !reverseMapping;
-      log(`Tempo mapping ${reverseMapping ? "reversed" : "normal"}`);
-    });
-
-    elements.orientationBtn.addEventListener("click", async () => {
-      console.log("Toggle Orientation button clicked");
-      orientationActive = !orientationActive;
-      if (orientationActive) {
-        await initAudio();
-        await requestOrientationPermission();
-      } else {
-        window.removeEventListener("deviceorientation", handleOrientation);
-        log("Orientation disabled");
+      if (analyser) {
+        analyser.disconnect();
+        analyser = null;
       }
-    });
+    }
+  });
 
-    elements.cameraBtn.addEventListener("click", async () => {
-      console.log("Toggle Camera button clicked");
-      cameraActive = !cameraActive;
-      if (cameraActive) {
-        await initAudio();
-        await initCamera();
-      } else {
-        log("Camera disabled");
-        const video = document.getElementById("video");
-        if (video.srcObject) {
-          video.srcObject.getTracks().forEach(track => track.stop());
-          video.classList.add("hidden");
-        }
-      }
-    });
+  elements.kickPulsesInput.addEventListener("input", async (e) => {
+    if (orientationActive) return;
+    await audioCtx?.resume();
+    kickPulses = parseInt(e.target.value);
+    document.getElementById("kickPulsesValue").textContent = `${kickPulses} pulses`;
+    e.target.setAttribute("aria-valuenow", kickPulses);
+  });
 
-    elements.motionBtn.addEventListener("click", async () => {
-      console.log("Toggle Accelerometer button clicked");
-      motionActive = !motionActive;
-      if (motionActive) {
-        await initAudio();
-        await requestMotionPermission();
-      } else {
-        window.removeEventListener("devicemotion", handleMotion);
-        log("Accelerometer disabled");
-      }
-    });
+  elements.snarePulsesInput.addEventListener("input", async (e) => {
+    if (orientationActive) return;
+    await audioCtx?.resume();
+    snarePulses = parseInt(e.target.value);
+    document.getElementById("snarePulsesValue").textContent = `${snarePulses} pulses`;
+    e.target.setAttribute("aria-valuenow", snarePulses);
+  });
 
-    elements.lightSensorBtn.addEventListener("click", async () => {
-      console.log("Toggle Light Sensor button clicked");
-      lightSensorActive = !lightSensorActive;
-      if (lightSensorActive) {
-        await initAudio();
-        await initLightSensor();
-      } else {
-        log("Light sensor disabled");
-      }
-    });
+  elements.hihatPulsesInput.addEventListener("input", async (e) => {
+    if (orientationActive || motionActive) return;
+    await audioCtx?.resume();
+    hihatPulses = parseInt(e.target.value);
+    document.getElementById("hihatPulsesValue").textContent = `${hihatPulses} pulses`;
+    e.target.setAttribute("aria-valuenow", hihatPulses);
+  });
 
-    elements.micBtn.addEventListener("click", async () => {
-      console.log("Toggle Microphone button clicked");
-      micActive = !micActive;
-      if (micActive) {
-        await initAudio();
-        await initMicrophone();
-      } else {
-        log("Microphone disabled");
-        if (micStream) {
-          micStream.getTracks().forEach(track => track.stop());
-          micStream = null;
-        }
-        if (analyser) {
-          analyser.disconnect();
-          analyser = null;
-        }
-      }
-    });
+  elements.distanceBandSelect.addEventListener("change", async (e) => {
+    await audioCtx?.resume();
+    distanceBand = parseFloat(e.target.value);
+    log(`Distance band changed to ${distanceBand} meters`);
+  });
 
-    elements.kickPulsesInput.addEventListener("input", async (e) => {
-      if (orientationActive) return;
-      await audioCtx?.resume();
-      kickPulses = parseInt(e.target.value);
-      document.getElementById("kickPulsesValue").textContent = `${kickPulses} pulses`;
-      e.target.setAttribute("aria-valuenow", kickPulses);
-    });
+  elements.shareLockBtn.addEventListener("click", () => {
+    console.log("Share Lock Point button clicked");
+    shareLockPoint();
+  });
 
-    elements.snarePulsesInput.addEventListener("input", async (e) => {
-      if (orientationActive) return;
-      await audioCtx?.resume();
-      snarePulses = parseInt(e.target.value);
-      document.getElementById("snarePulsesValue").textContent = `${snarePulses} pulses`;
-      e.target.setAttribute("aria-valuenow", snarePulses);
-    });
+  elements.joinLockBtn.addEventListener("click", async () => {
+    console.log("Join Lock Point button clicked");
+    const audioSuccess = await initAudio();
+    if (audioSuccess) {
+      joinLockPoint();
+    }
+  });
 
-    elements.hihatPulsesInput.addEventListener("input", async (e) => {
-      if (orientationActive || motionActive) return;
-      await audioCtx?.resume();
-      hihatPulses = parseInt(e.target.value);
-      document.getElementById("hihatPulsesValue").textContent = `${hihatPulses} pulses`;
-      e.target.setAttribute("aria-valuenow", hihatPulses);
-    });
+  elements.toggleFreeModeBtn.addEventListener("click", () => {
+    console.log("Toggle Free Mode button clicked");
+    toggleFreeMode();
+  });
 
-    elements.distanceBandSelect.addEventListener("change", async (e) => {
-      await audioCtx?.resume();
-      distanceBand = parseFloat(e.target.value);
-      log(`Distance band changed to ${distanceBand} meters`);
-    });
-
-    elements.shareLockBtn.addEventListener("click", () => {
-      console.log("Share Lock Point button clicked");
-      shareLockPoint();
-    });
-
-    elements.joinLockBtn.addEventListener("click", async () => {
-      console.log("Join Lock Point button clicked");
-      const audioSuccess = await initAudio();
-      if (audioSuccess) {
-        joinLockPoint();
-      }
-    });
-
-    elements.toggleFreeModeBtn.addEventListener("click", () => {
-      console.log("Toggle Free Mode button clicked");
-      toggleFreeMode();
-      if (watchId === null && !freeMode) startGpsTracking();
-    });
-
-    log("Page loaded successfully. Ready to use.");
-  }, 100);
+  log("Page loaded successfully. Ready to use.");
 });
