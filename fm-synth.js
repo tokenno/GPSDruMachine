@@ -11,20 +11,20 @@ let cameraActive = false;
 let lightSensorActive = false;
 let micActive = false;
 let currentHeading = 0;
-let previousHeading = 0; // Track previous heading for direction changes
+let previousHeading = 0;
 let micStream = null;
 let analyser = null;
 let isPlaying = false;
 let nextNoteTime = 0;
-let scheduleAheadTime = 0.1; // Schedule 100ms ahead
+let scheduleAheadTime = 0.1;
 let lookaheadInterval = null;
 
-let tempo = 20; // Initial tempo set to 20 BPM
+let tempo = 20;
 let kickPulses = 4;
 let snarePulses = 2;
 let hihatPulses = 8;
-let steps = 16; // Fixed number of steps for Euclidean rhythms
-let distanceBand = 50; // Default distance band in meters
+let steps = 16;
+let distanceBand = 50;
 let kickGainNode = null;
 let snareGainNode = null;
 let hihatGainNode = null;
@@ -38,9 +38,9 @@ let compassSection = null;
 let compassSvg = null;
 let directionArrow = null;
 let distanceDisplay = null;
-let freeMode = false; // New flag for free movement mode
-let lastPosition = null; // Track the last position for speed calculation
-let lastUpdateTime = null; // Track the last update time
+let freeMode = false;
+let lastPosition = null;
+let lastUpdateTime = null;
 
 function log(msg, isError = false) {
   console.log(msg);
@@ -50,14 +50,12 @@ function log(msg, isError = false) {
   }
 }
 
-// Euclidean rhythm generator with rotation
 function generateEuclideanRhythm(k, n, rotation = 0) {
   if (k > n) k = n;
   if (k < 0) k = 0;
   let buckets = new Array(n).fill(0);
   let pattern = [];
   
-  // Bjorklund algorithm
   let counts = new Array(n).fill(0);
   let remainders = new Array(n).fill(0);
   let level = 0;
@@ -89,7 +87,6 @@ function generateEuclideanRhythm(k, n, rotation = 0) {
   
   build(level);
   
-  // Apply rotation
   rotation = rotation % n;
   if (rotation < 0) rotation += n;
   return pattern.slice(-rotation).concat(pattern.slice(0, -rotation));
@@ -98,7 +95,9 @@ function generateEuclideanRhythm(k, n, rotation = 0) {
 async function loadSample(url) {
   try {
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status} ${response.statusText} for ${url}`);
+    }
     const arrayBuffer = await response.arrayBuffer();
     try {
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
@@ -119,11 +118,16 @@ async function initAudio() {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
     if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
+      await audioCtx.resume().catch(err => {
+        log("Failed to resume AudioContext: " + err.message, true);
+        throw err;
+      });
       log("Audio context resumed");
+    } else if (audioCtx.state === 'closed') {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      log("Audio context recreated");
     }
 
-    // Load drum samples from local files
     if (!kickBuffer) {
       kickBuffer = await loadSample('kick.wav');
       if (!kickBuffer) log("Kick sample failed to load, but continuing", true);
@@ -137,7 +141,6 @@ async function initAudio() {
       if (!hihatBuffer) log("Hi-hat sample failed to load, but continuing", true);
     }
 
-    // Create gain nodes for volume control
     kickGainNode = audioCtx.createGain();
     kickGainNode.gain.setValueAtTime(1.0, audioCtx.currentTime);
     kickGainNode.connect(audioCtx.destination);
@@ -150,7 +153,6 @@ async function initAudio() {
     hihatGainNode.gain.setValueAtTime(0.7, audioCtx.currentTime);
     hihatGainNode.connect(audioCtx.destination);
 
-    // Check if at least one sample loaded
     if (!kickBuffer && !snareBuffer && !hihatBuffer) {
       throw new Error("All samples failed to load. Cannot proceed.");
     }
@@ -165,7 +167,7 @@ async function initAudio() {
 
 function playSample(buffer, gainNode, time, pitch = 1.0) {
   if (!buffer) {
-    return; // Silently skip if buffer is null
+    return;
   }
   const source = audioCtx.createBufferSource();
   source.buffer = buffer;
@@ -178,17 +180,14 @@ function scheduleNotes() {
   while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
     const secondsPerBeat = 60.0 / tempo;
     const headingRotation = Math.floor(currentHeading / 45);
-    // Detect heading change for orientation-based randomness
     const headingChange = Math.abs(currentHeading - previousHeading);
-    const randomOffset = headingChange > 10 ? Math.floor(Math.random() * 3) - 1 : 0; // Random offset between -1 and 1 for rotation
+    const randomOffset = headingChange > 10 ? Math.floor(Math.random() * 3) - 1 : 0;
 
-    // Apply independent random variations to pulses for each drum type when heading changes
-    if (headingChange > 10 && !orientationActive) { // Only if orientation is not overriding pulses
-      kickPulses = Math.max(1, Math.min(8, kickPulses + (Math.floor(Math.random() * 3) - 1))); // Random change between -1 and 1
-      snarePulses = Math.max(1, Math.min(8, snarePulses + (Math.floor(Math.random() * 3) - 1))); // Independent random change
-      hihatPulses = Math.max(1, Math.min(16, hihatPulses + (Math.floor(Math.random() * 3) - 1))); // Independent random change for hi-hat
+    if (headingChange > 10 && !orientationActive) {
+      kickPulses = Math.max(1, Math.min(8, kickPulses + (Math.floor(Math.random() * 3) - 1)));
+      snarePulses = Math.max(1, Math.min(8, snarePulses + (Math.floor(Math.random() * 3) - 1)));
+      hihatPulses = Math.max(1, Math.min(16, hihatPulses + (Math.floor(Math.random() * 3) - 1)));
 
-      // Update UI to reflect new pulse values
       document.getElementById("kickPulses").value = kickPulses;
       document.getElementById("kickPulsesValue").textContent = `${kickPulses} pulses`;
       document.getElementById("kickPulses").setAttribute("aria-valuenow", kickPulses);
@@ -204,7 +203,6 @@ function scheduleNotes() {
       log(`Pulses randomized - Kick: ${kickPulses}, Snare: ${snarePulses}, Hi-Hat: ${hihatPulses}`);
     }
 
-    // Generate rhythms with the random rotation offset
     const kickPattern = generateEuclideanRhythm(kickPulses, steps, headingRotation + randomOffset);
     const snarePattern = generateEuclideanRhythm(snarePulses, steps, headingRotation + randomOffset);
     const hihatPattern = generateEuclideanRhythm(hihatPulses, steps, headingRotation + randomOffset);
@@ -217,13 +215,13 @@ function scheduleNotes() {
     }
     nextNoteTime += secondsPerBeat;
   }
-  previousHeading = currentHeading; // Update previous heading for next iteration
+  previousHeading = currentHeading;
 }
 
 function startScheduler() {
   if (!isPlaying) {
     isPlaying = true;
-    nextNoteTime = audioCtx.currentTime; // Reset to ensure new tempo takes effect
+    nextNoteTime = audioCtx.currentTime;
     scheduleNotes();
     lookaheadInterval = setInterval(scheduleNotes, 25);
     log("Drum machine started");
@@ -250,16 +248,14 @@ async function stopAudio() {
 function updateTempo(distanceOrSpeed) {
   let newTempo;
   if (freeMode) {
-    // Map speed (m/s) to tempo (20-200 BPM)
-    const maxSpeed = 5; // Assume 5 m/s (approx. 18 km/h or 11 mph) as max speed
+    const maxSpeed = 5;
     const normalizedSpeed = Math.min(Math.max(distanceOrSpeed / maxSpeed, 0), 1);
-    newTempo = 20 + normalizedSpeed * (200 - 20); // Linear interpolation from 20 to 200 BPM
+    newTempo = 20 + normalizedSpeed * (200 - 20);
   } else {
-    // Existing lock-based tempo calculation
     const normalizedDistance = Math.min(Math.max(distanceOrSpeed / distanceBand, 0), 1);
     newTempo = reverseMapping 
-      ? 20 + (1 - normalizedDistance) * (200 - 20) // 200 to 20 BPM
-      : 20 + normalizedDistance * (200 - 20);     // 20 to 200 BPM
+      ? 20 + (1 - normalizedDistance) * (200 - 20)
+      : 20 + normalizedDistance * (200 - 20);
   }
   tempo = newTempo;
   document.getElementById("tempoValue").textContent = `${tempo.toFixed(1)} BPM`;
@@ -299,13 +295,13 @@ async function startGpsTracking() {
   try {
     watchId = navigator.geolocation.watchPosition(
       pos => {
-        const currentTime = Date.now() / 1000; // Time in seconds
+        const currentTime = Date.now() / 1000;
         if (!freeMode) {
           if (!lockPosition) {
             lockPosition = pos.coords;
-            tempo = 20; // Start at 20 BPM when locking GPS
-            updateTempo(0); // Update display with initial 20 BPM
-            nextNoteTime = audioCtx.currentTime; // Reset to apply new tempo immediately
+            tempo = 20;
+            updateTempo(0);
+            nextNoteTime = audioCtx.currentTime;
             log(`GPS position locked: Lat ${lockPosition.latitude.toFixed(4)}, Lon ${lockPosition.longitude.toFixed(4)}`);
             log(`Initial tempo set to: ${tempo} BPM`);
           }
@@ -318,11 +314,10 @@ async function startGpsTracking() {
             updateCompassDisplay(distance, bearing);
           }
         } else {
-          // Free mode: Calculate speed and update tempo
           if (lastPosition && lastUpdateTime) {
             const distance = calculateDistance(pos.coords, lastPosition);
             const timeDiff = currentTime - lastUpdateTime;
-            const speed = timeDiff > 0 ? distance / timeDiff : 0; // Speed in m/s
+            const speed = timeDiff > 0 ? distance / timeDiff : 0;
             updateTempo(speed);
             if (isPlaying) scheduleNotes();
             log(`Speed: ${speed.toFixed(2)} m/s, Tempo: ${tempo.toFixed(1)} BPM`);
@@ -331,7 +326,6 @@ async function startGpsTracking() {
           lastUpdateTime = currentTime;
         }
 
-        // Update WebSocket if sharing
         if (isSharer && ws?.readyState === WebSocket.OPEN) {
           ws.send(
             JSON.stringify({
@@ -384,8 +378,7 @@ function handleOrientation(event) {
 
   currentHeading = alpha;
   
-  // Map beta (-180 to 180) to pulses (1 to 8)
-  const normalizedBeta = (beta + 180) / 360; // 0 to 1
+  const normalizedBeta = (beta + 180) / 360;
   kickPulses = Math.max(1, Math.min(8, Math.round(normalizedBeta * 7) + 1));
   snarePulses = Math.max(1, Math.min(8, Math.round(normalizedBeta * 7) + 1));
   hihatPulses = Math.max(1, Math.min(8, Math.round(normalizedBeta * 7) + 1));
@@ -458,7 +451,7 @@ async function initCamera() {
       }
       const avgBrightness = sum / (imageData.data.length / 4);
       const normalizedBrightness = avgBrightness / 255;
-      const gain = 0.5 + normalizedBrightness * 0.5; // 0.5 to 1.0
+      const gain = 0.5 + normalizedBrightness * 0.5;
       if (kickGainNode) {
         kickGainNode.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.02);
         snareGainNode.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.02);
@@ -504,7 +497,7 @@ function handleMotion(event) {
   }
   const magnitude = Math.sqrt(accel.x ** 2 + accel.y ** 2 + accel.z ** 2);
   const mappedMagnitude = Math.min(magnitude, 10);
-  hihatPulses = Math.max(1, Math.min(16, Math.round(mappedMagnitude * 1.6))); // 0-10g maps to 1-16 pulses
+  hihatPulses = Math.max(1, Math.min(16, Math.round(mappedMagnitude * 1.6)));
   document.getElementById("hihatPulses").value = hihatPulses;
   document.getElementById("hihatPulsesValue").textContent = `${hihatPulses} pulses`;
   document.getElementById("hihatPulses").setAttribute("aria-valuenow", hihatPulses);
@@ -521,9 +514,9 @@ async function initLightSensor() {
     const sensor = new AmbientLightSensor();
     sensor.onreading = () => {
       if (!lightSensorActive) return;
-      const illuminance = sensor.illuminance; // In lux
+      const illuminance = sensor.illuminance;
       const normalizedIlluminance = Math.min(Math.max(illuminance / 100000, 0), 1);
-      const gain = 0.5 + normalizedIlluminance * 0.5; // 0.5 to 1.0
+      const gain = 0.5 + normalizedIlluminance * 0.5;
       if (kickGainNode) {
         kickGainNode.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.02);
         snareGainNode.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.02);
@@ -578,7 +571,7 @@ async function initMicrophone() {
       const sampleRate = audioCtx.sampleRate;
       const frequency = (maxIndex * sampleRate) / analyser.fftSize;
       const normalizedFreq = Math.min(Math.max((frequency - 50) / (2000 - 50), 0), 1);
-      const pitch = 0.5 + normalizedFreq * 1.0; // 0.5 to 1.5
+      const pitch = 0.5 + normalizedFreq * 1.0;
       log(`Pitch adjusted: ${pitch.toFixed(2)}x (Mic: ${frequency.toFixed(1)} Hz)`);
       requestAnimationFrame(processMicAudio);
     }
@@ -592,7 +585,7 @@ async function initMicrophone() {
 function connectWebSocket() {
   if (ws && ws.readyState === WebSocket.OPEN) return;
 
-  const wsUrl = 'wss://gps-tracking-server.onrender.com'; // Replace with your Render URL
+  const wsUrl = 'wss://gps-tracking-server.onrender.com';
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
@@ -611,7 +604,6 @@ function connectWebSocket() {
       } else if (data.status === 'error') {
         log(data.message, true);
       } else if (data.lat && data.lon) {
-        // Tracker received updated coordinates
         lockPosition = { latitude: data.lat, longitude: data.lon };
         log(`Received update: Lat ${data.lat.toFixed(4)}, Lon ${data.lon.toFixed(4)}`);
         if (!isPlaying) startScheduler();
@@ -639,11 +631,10 @@ function shareLockPoint() {
   }
 
   connectWebSocket();
-  sessionId = Math.random().toString(36).substring(2, 10); // Generate a random session ID
+  sessionId = Math.random().toString(36).substring(2, 10);
   isSharer = true;
   ws.send(JSON.stringify({ type: 'share', sessionId, userType: 'sharer' }));
 
-  // Start periodic updates
   setInterval(() => {
     if (isSharer && ws?.readyState === WebSocket.OPEN) {
       navigator.geolocation.getCurrentPosition(
@@ -664,7 +655,7 @@ function shareLockPoint() {
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
-  }, 5000); // Update every 5 seconds
+  }, 5000);
 }
 
 function joinLockPoint() {
@@ -679,7 +670,6 @@ function joinLockPoint() {
   isSharer = false;
   ws.send(JSON.stringify({ type: 'join', sessionId, userType: 'tracker' }));
 
-  // Show compass and start tracking
   compassSection.style.display = 'block';
 }
 
@@ -689,194 +679,206 @@ function toggleFreeMode() {
     log('Free Mode enabled. Tempo now based on movement speed.');
     lastPosition = null;
     lastUpdateTime = null;
-    lockPosition = null; // Clear lock position in free mode
-    compassSection.style.display = 'none'; // Hide compass in free mode
+    lockPosition = null;
+    compassSection.style.display = 'none';
     if (watchId === null) startGpsTracking();
   } else {
     log('Free Mode disabled. Returning to lock-based mode.');
-    compassSection.style.display = 'block'; // Show compass in lock mode
+    compassSection.style.display = 'block';
     if (watchId === null) startGpsTracking();
   }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  compassSection = document.getElementById("compass-section");
-  compassSvg = document.getElementById("compass");
-  directionArrow = document.getElementById("direction-arrow");
-  distanceDisplay = document.getElementById("distance-display");
+  setTimeout(() => {
+    compassSection = document.getElementById("compass-section");
+    compassSvg = document.getElementById("compass");
+    directionArrow = document.getElementById("direction-arrow");
+    distanceDisplay = document.getElementById("distance-display");
 
-  const elements = {
-    lockBtn: document.getElementById("lockBtn"),
-    testBtn: document.getElementById("testBtn"),
-    stopBtn: document.getElementById("stopBtn"),
-    toggleDirectionBtn: document.getElementById("toggleDirectionBtn"),
-    orientationBtn: document.getElementById("orientationBtn"),
-    motionBtn: document.getElementById("motionBtn"),
-    cameraBtn: document.getElementById("cameraBtn"),
-    lightSensorBtn: document.getElementById("lightSensorBtn"),
-    micBtn: document.getElementById("micBtn"),
-    kickPulsesInput: document.getElementById("kickPulses"),
-    snarePulsesInput: document.getElementById("snarePulses"),
-    hihatPulsesInput: document.getElementById("hihatPulses"),
-    distanceBandSelect: document.getElementById("distanceBand"),
-    shareLockBtn: document.getElementById("shareLockBtn"),
-    joinLockBtn: document.getElementById("joinLockBtn"),
-    toggleFreeModeBtn: document.getElementById("toggleFreeModeBtn"),
-  };
+    const elements = {
+      lockBtn: document.getElementById("lockBtn"),
+      testBtn: document.getElementById("testBtn"),
+      stopBtn: document.getElementById("stopBtn"),
+      toggleDirectionBtn: document.getElementById("toggleDirectionBtn"),
+      orientationBtn: document.getElementById("orientationBtn"),
+      motionBtn: document.getElementById("motionBtn"),
+      cameraBtn: document.getElementById("cameraBtn"),
+      lightSensorBtn: document.getElementById("lightSensorBtn"),
+      micBtn: document.getElementById("micBtn"),
+      kickPulsesInput: document.getElementById("kickPulses"),
+      snarePulsesInput: document.getElementById("snarePulses"),
+      hihatPulsesInput: document.getElementById("hihatPulses"),
+      distanceBandSelect: document.getElementById("distanceBand"),
+      shareLockBtn: document.getElementById("shareLockBtn"),
+      joinLockBtn: document.getElementById("joinLockBtn"),
+      toggleFreeModeBtn: document.getElementById("toggleFreeModeBtn"),
+    };
 
-  if (Object.values(elements).some(el => !el)) {
-    log("One or more UI elements not found. Check HTML IDs.", true);
-    console.error("Missing elements:", elements);
-    return;
-  }
-
-  elements.lockBtn.addEventListener("click", async () => {
-    console.log("Lock GPS button clicked");
-    freeMode = false; // Ensure free mode is off when locking GPS
-    const audioSuccess = await initAudio();
-    if (audioSuccess) {
-      await startGpsTracking();
-      startScheduler();
-      compassSection.style.display = "block";
+    if (Object.values(elements).some(el => !el)) {
+      const missing = Object.keys(elements).filter(key => !elements[key]);
+      log(`One or more UI elements not found. Missing IDs: ${missing.join(', ')}`, true);
+      console.error("Missing elements:", missing);
+      return;
     }
-  });
 
-  elements.testBtn.addEventListener("click", async () => {
-    console.log("Test Audio button clicked");
-    const audioSuccess = await initAudio();
-    if (audioSuccess) {
-      updateTempo(10);
-      startScheduler();
-    }
-  });
-
-  elements.stopBtn.addEventListener("click", async () => {
-    console.log("Stop Audio button clicked");
-    await stopAudio();
-  });
-
-  elements.toggleDirectionBtn.addEventListener("click", async () => {
-    await audioCtx?.resume();
-    reverseMapping = !reverseMapping;
-    log(`Tempo mapping ${reverseMapping ? "reversed" : "normal"}`);
-  });
-
-  elements.orientationBtn.addEventListener("click", async () => {
-    console.log("Toggle Orientation button clicked");
-    orientationActive = !orientationActive;
-    if (orientationActive) {
-      await initAudio();
-      await requestOrientationPermission();
-    } else {
-      window.removeEventListener("deviceorientation", handleOrientation);
-      log("Orientation disabled");
-    }
-  });
-
-  elements.cameraBtn.addEventListener("click", async () => {
-    console.log("Toggle Camera button clicked");
-    cameraActive = !cameraActive;
-    if (cameraActive) {
-      await initAudio();
-      await initCamera();
-    } else {
-      log("Camera disabled");
-      const video = document.getElementById("video");
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
-        video.classList.add("hidden");
+    elements.lockBtn.addEventListener("click", async () => {
+      console.log("Lock GPS button clicked");
+      freeMode = false;
+      const audioSuccess = await initAudio();
+      if (audioSuccess) {
+        log("Starting GPS tracking...");
+        await startGpsTracking();
+        log("Starting audio scheduler...");
+        startScheduler();
+        compassSection.style.display = "block";
+      } else {
+        log("Audio initialization failed. Check console for details.", true);
       }
-    }
-  });
+    });
 
-  elements.motionBtn.addEventListener("click", async () => {
-    console.log("Toggle Accelerometer button clicked");
-    motionActive = !motionActive;
-    if (motionActive) {
-      await initAudio();
-      await requestMotionPermission();
-    } else {
-      window.removeEventListener("devicemotion", handleMotion);
-      log("Accelerometer disabled");
-    }
-  });
-
-  elements.lightSensorBtn.addEventListener("click", async () => {
-    console.log("Toggle Light Sensor button clicked");
-    lightSensorActive = !lightSensorActive;
-    if (lightSensorActive) {
-      await initAudio();
-      await initLightSensor();
-    } else {
-      log("Light sensor disabled");
-    }
-  });
-
-  elements.micBtn.addEventListener("click", async () => {
-    console.log("Toggle Microphone button clicked");
-    micActive = !micActive;
-    if (micActive) {
-      await initAudio();
-      await initMicrophone();
-    } else {
-      log("Microphone disabled");
-      if (micStream) {
-        micStream.getTracks().forEach(track => track.stop());
-        micStream = null;
+    elements.testBtn.addEventListener("click", async () => {
+      console.log("Test Audio button clicked");
+      const audioSuccess = await initAudio();
+      if (audioSuccess) {
+        log("Playing test audio...");
+        updateTempo(10);
+        startScheduler();
+      } else {
+        log("Audio initialization failed. Check console for details.", true);
       }
-      if (analyser) {
-        analyser.disconnect();
-        analyser = null;
+    });
+
+    elements.stopBtn.addEventListener("click", async () => {
+      console.log("Stop Audio button clicked");
+      await stopAudio();
+    });
+
+    elements.toggleDirectionBtn.addEventListener("click", async () => {
+      await audioCtx?.resume();
+      reverseMapping = !reverseMapping;
+      log(`Tempo mapping ${reverseMapping ? "reversed" : "normal"}`);
+    });
+
+    elements.orientationBtn.addEventListener("click", async () => {
+      console.log("Toggle Orientation button clicked");
+      orientationActive = !orientationActive;
+      if (orientationActive) {
+        await initAudio();
+        await requestOrientationPermission();
+      } else {
+        window.removeEventListener("deviceorientation", handleOrientation);
+        log("Orientation disabled");
       }
-    }
-  });
+    });
 
-  elements.kickPulsesInput.addEventListener("input", async (e) => {
-    if (orientationActive) return; // Skip manual control if orientation is active
-    await audioCtx?.resume();
-    kickPulses = parseInt(e.target.value);
-    document.getElementById("kickPulsesValue").textContent = `${kickPulses} pulses`;
-    e.target.setAttribute("aria-valuenow", kickPulses);
-  });
+    elements.cameraBtn.addEventListener("click", async () => {
+      console.log("Toggle Camera button clicked");
+      cameraActive = !cameraActive;
+      if (cameraActive) {
+        await initAudio();
+        await initCamera();
+      } else {
+        log("Camera disabled");
+        const video = document.getElementById("video");
+        if (video.srcObject) {
+          video.srcObject.getTracks().forEach(track => track.stop());
+          video.classList.add("hidden");
+        }
+      }
+    });
 
-  elements.snarePulsesInput.addEventListener("input", async (e) => {
-    if (orientationActive) return; // Skip manual control if orientation is active
-    await audioCtx?.resume();
-    snarePulses = parseInt(e.target.value);
-    document.getElementById("snarePulsesValue").textContent = `${snarePulses} pulses`;
-    e.target.setAttribute("aria-valuenow", snarePulses);
-  });
+    elements.motionBtn.addEventListener("click", async () => {
+      console.log("Toggle Accelerometer button clicked");
+      motionActive = !motionActive;
+      if (motionActive) {
+        await initAudio();
+        await requestMotionPermission();
+      } else {
+        window.removeEventListener("devicemotion", handleMotion);
+        log("Accelerometer disabled");
+      }
+    });
 
-  elements.hihatPulsesInput.addEventListener("input", async (e) => {
-    if (orientationActive || motionActive) return; // Skip manual control if orientation or motion is active
-    await audioCtx?.resume();
-    hihatPulses = parseInt(e.target.value);
-    document.getElementById("hihatPulsesValue").textContent = `${hihatPulses} pulses`;
-    e.target.setAttribute("aria-valuenow", hihatPulses);
-  });
+    elements.lightSensorBtn.addEventListener("click", async () => {
+      console.log("Toggle Light Sensor button clicked");
+      lightSensorActive = !lightSensorActive;
+      if (lightSensorActive) {
+        await initAudio();
+        await initLightSensor();
+      } else {
+        log("Light sensor disabled");
+      }
+    });
 
-  elements.distanceBandSelect.addEventListener("change", async (e) => {
-    await audioCtx?.resume();
-    distanceBand = parseFloat(e.target.value);
-    log(`Distance band changed to ${distanceBand} meters`);
-  });
+    elements.micBtn.addEventListener("click", async () => {
+      console.log("Toggle Microphone button clicked");
+      micActive = !micActive;
+      if (micActive) {
+        await initAudio();
+        await initMicrophone();
+      } else {
+        log("Microphone disabled");
+        if (micStream) {
+          micStream.getTracks().forEach(track => track.stop());
+          micStream = null;
+        }
+        if (analyser) {
+          analyser.disconnect();
+          analyser = null;
+        }
+      }
+    });
 
-  elements.shareLockBtn.addEventListener("click", () => {
-    console.log("Share Lock Point button clicked");
-    shareLockPoint();
-  });
+    elements.kickPulsesInput.addEventListener("input", async (e) => {
+      if (orientationActive) return;
+      await audioCtx?.resume();
+      kickPulses = parseInt(e.target.value);
+      document.getElementById("kickPulsesValue").textContent = `${kickPulses} pulses`;
+      e.target.setAttribute("aria-valuenow", kickPulses);
+    });
 
-  elements.joinLockBtn.addEventListener("click", async () => {
-    console.log("Join Lock Point button clicked");
-    const audioSuccess = await initAudio();
-    if (audioSuccess) {
-      joinLockPoint();
-    }
-  });
+    elements.snarePulsesInput.addEventListener("input", async (e) => {
+      if (orientationActive) return;
+      await audioCtx?.resume();
+      snarePulses = parseInt(e.target.value);
+      document.getElementById("snarePulsesValue").textContent = `${snarePulses} pulses`;
+      e.target.setAttribute("aria-valuenow", snarePulses);
+    });
 
-  elements.toggleFreeModeBtn.addEventListener("click", () => {
-    console.log("Toggle Free Mode button clicked");
-    toggleFreeMode();
-    if (watchId === null && !freeMode) startGpsTracking(); // Start tracking if switching to lock mode
-  });
+    elements.hihatPulsesInput.addEventListener("input", async (e) => {
+      if (orientationActive || motionActive) return;
+      await audioCtx?.resume();
+      hihatPulses = parseInt(e.target.value);
+      document.getElementById("hihatPulsesValue").textContent = `${hihatPulses} pulses`;
+      e.target.setAttribute("aria-valuenow", hihatPulses);
+    });
+
+    elements.distanceBandSelect.addEventListener("change", async (e) => {
+      await audioCtx?.resume();
+      distanceBand = parseFloat(e.target.value);
+      log(`Distance band changed to ${distanceBand} meters`);
+    });
+
+    elements.shareLockBtn.addEventListener("click", () => {
+      console.log("Share Lock Point button clicked");
+      shareLockPoint();
+    });
+
+    elements.joinLockBtn.addEventListener("click", async () => {
+      console.log("Join Lock Point button clicked");
+      const audioSuccess = await initAudio();
+      if (audioSuccess) {
+        joinLockPoint();
+      }
+    });
+
+    elements.toggleFreeModeBtn.addEventListener("click", () => {
+      console.log("Toggle Free Mode button clicked");
+      toggleFreeMode();
+      if (watchId === null && !freeMode) startGpsTracking();
+    });
+
+    log("Page loaded successfully. Ready to use.");
+  }, 100);
 });
