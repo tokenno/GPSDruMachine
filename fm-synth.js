@@ -29,9 +29,6 @@ let kickGainNode = null;
 let snareGainNode = null;
 let hihatGainNode = null;
 
-let ws = null;
-let sessionId = null;
-let isSharer = false;
 let freeMode = false;
 let lastPosition = null;
 let lastUpdateTime = null;
@@ -326,17 +323,6 @@ async function startGpsTracking() {
           lastPosition = pos.coords;
           lastUpdateTime = currentTime;
         }
-
-        if (isSharer && ws?.readyState === WebSocket.OPEN && !freeMode) {
-          ws.send(
-            JSON.stringify({
-              type: 'update',
-              sessionId,
-              lat: pos.coords.latitude,
-              lon: pos.coords.longitude,
-            })
-          );
-        }
       },
       err => {
         log(`GPS error: ${err.message}`, true);
@@ -583,147 +569,94 @@ async function initMicrophone() {
   }
 }
 
-function connectWebSocket() {
-  if (ws && ws.readyState === WebSocket.OPEN) return;
-
-  const wsUrl = 'wss://gps-tracking-server.onrender.com'; // Replace with your Render URL
-  ws = new WebSocket(wsUrl);
-
-  ws.onopen = () => {
-    log('Connected to server');
-  };
-
-  ws.onmessage = (event) => {
-    if (freeMode) return; // Ignore server messages in free mode
-    try {
-      const data = JSON.parse(event.data);
-      if (data.status === 'sharing') {
-        sessionId = data.sessionId;
-        document.getElementById('sessionId').value = sessionId;
-        log('Session ID generated. Share it with others.');
-      } else if (data.status === 'joined') {
-        log('Joined session. Waiting for location updates...');
-      } else if (data.status === 'error') {
-        log(data.message, true);
-      } else if (data.lat && data.lon) {
-        lockPosition = { latitude: data.lat, longitude: data.lon };
-        log(`Received update: Lat ${data.lat.toFixed(4)}, Lon ${data.lon.toFixed(4)}`);
-        if (!isPlaying) startScheduler();
-      }
-    } catch (err) {
-      log('Error processing server message: ' + err.message, true);
-    }
-  };
-
-  ws.onclose = () => {
-    log('Disconnected from server. Retrying...');
-    ws = null;
-    setTimeout(connectWebSocket, 1000); // Faster retry
-  };
-
-  ws.onerror = (err) => {
-    log('WebSocket error: ' + (err.message || 'Unknown error'), true);
-  };
-}
-
 function shareLockPoint() {
   if (!lockPosition && !freeMode) {
     log('No lock position set. Please lock GPS first.', true);
     return;
   }
 
-  if (freeMode) {
-    const { latitude, longitude } = lockPosition || lastPosition;
-    const baseUrl = window.location.origin || 'https://drum-machine.app';
-    const shareUrl = `${baseUrl}?lat=${latitude.toFixed(6)}&lon=${longitude.toFixed(6)}`;
-    document.getElementById('sessionId').value = shareUrl;
-    try {
-      navigator.clipboard.writeText(shareUrl);
-      log('Lock Point URL copied to clipboard! Share it with another user.');
-    } catch (err) {
-      log('Failed to copy URL to clipboard. Please copy manually.', true);
-    }
+  const position = freeMode && lastPosition ? lastPosition : lockPosition;
+  if (!position) {
+    log('No position available to share. Please lock GPS or enable Free Mode and move.', true);
     return;
   }
 
-  connectWebSocket();
-  sessionId = Math.random().toString(36).substring(2, 10);
-  isSharer = true;
-  ws.send(JSON.stringify({ type: 'share', sessionId, userType: 'sharer' }));
-
-  setInterval(() => {
-    if (isSharer && ws?.readyState === WebSocket.OPEN && !freeMode) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          lockPosition = pos.coords;
-          ws.send(
-            JSON.stringify({
-              type: 'update',
-              sessionId,
-              lat: pos.coords.latitude,
-              lon: pos.coords.longitude,
-            })
-          );
-        },
-        (err) => log('GPS update error: ' + err.message, true),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    }
-  }, 5000);
+  const { latitude, longitude } = position;
+  const baseUrl = window.location.origin || 'https://drum-machine.app';
+  const shareUrl = `${baseUrl}?lat=${latitude.toFixed(6)}&lon=${longitude.toFixed(6)}`;
+  document.getElementById('sessionId').value = shareUrl;
+  try {
+    navigator.clipboard.writeText(shareUrl);
+    log('Lock Point URL copied to clipboard! Share it with another user.');
+  } catch (err) {
+    log('Failed to copy URL to clipboard. Please copy manually.', true);
+  }
 }
 
 function joinLockPoint() {
   const joinSessionId = document.getElementById('joinSessionId').value;
   if (!joinSessionId) {
-    log('Please enter a session ID or URL to join.', true);
+    log('Please enter a URL to join.', true);
     return;
   }
 
-  if (freeMode) {
-    try {
-      const url = new URL(joinSessionId);
-      const lat = parseFloat(url.searchParams.get('lat'));
-      const lon = parseFloat(url.searchParams.get('lon'));
+  try {
+    const url = new URL(joinSessionId);
+    const lat = parseFloat(url.searchParams.get('lat'));
+    const lon = parseFloat(url.searchParams.get('lon'));
 
-      if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-        log('Invalid coordinates in the URL.', true);
-        return;
-      }
-
-      lockPosition = { latitude: lat, longitude: lon };
-      tempo = 20;
-      updateTempo(0);
-      nextNoteTime = audioCtx.currentTime;
-      log(`Locked onto shared position: Lat ${lat.toFixed(4)}, Lon ${lon.toFixed(4)}`);
-      startGpsTracking();
-      if (!isPlaying) startScheduler();
-    } catch (err) {
-      log(`Failed to join Lock Point: ${err.message}`, true);
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      log('Invalid coordinates in the URL.', true);
+      return;
     }
-    return;
+
+    lockPosition = { latitude: lat, longitude: lon };
+    tempo = 20;
+    updateTempo(0);
+    nextNoteTime = audioCtx.currentTime;
+    log(`Locked onto shared position: Lat ${lat.toFixed(4)}, Lon ${lon.toFixed(4)}`);
+
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    watchId = navigator.geolocation.watchPosition(
+      pos => {
+        if (!lockPosition) {
+          log('Lock position not set', true);
+          return;
+        }
+        const distance = calculateDistance(pos.coords, lockPosition);
+        updateTempo(distance);
+        if (isPlaying) scheduleNotes();
+        if (currentHeading !== null) {
+          const bearing = calculateBearing(pos.coords, lockPosition);
+          updateCompassDisplay(distance, bearing);
+        }
+      },
+      err => log(`GPS error: ${err.message}`, true),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+
+    compassSection.style.display = 'block';
+    if (!isPlaying) startScheduler();
+  } catch (err) {
+    log(`Failed to join Lock Point: ${err.message}`, true);
   }
-
-  connectWebSocket();
-  sessionId = joinSessionId;
-  isSharer = false;
-  ws.send(JSON.stringify({ type: 'join', sessionId, userType: 'tracker' }));
-
-  compassSection.style.display = 'block';
 }
 
 function toggleFreeMode() {
   freeMode = !freeMode;
-  freeModeStatus.textContent = freeMode ? 'On' : 'Off';
+  if (freeModeStatus) {
+    freeModeStatus.textContent = freeMode ? 'On' : 'Off';
+  }
   if (freeMode) {
     log('Free Mode enabled. Tempo now based on movement speed.');
     lockPosition = null;
     compassSection.style.display = 'none';
-    if (ws) ws.close();
-    ws = null;
   } else {
     log('Free Mode disabled. Returning to lock-based mode.');
     compassSection.style.display = 'block';
-    connectWebSocket();
   }
   startGpsTracking();
 }

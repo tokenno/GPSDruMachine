@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device=device-width, initial-scale=1.0">
-  <title>GPS Drum Machine</title>
+  <title>Drum Machine - Professional Dark Theme</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #1a1a1a; color: #e0e0e0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
@@ -22,7 +22,7 @@
     input[type="range"] { width: 150px; accent-color: #4a90e2; }
     input[type="text"] { background-color: #424242; color: #e0e0e0; border: 1px solid #666; padding: 5px; border-radius: 5px; font-size: 1rem; width: 100%; max-width: 300px; }
     select { background-color: #424242; color: #e0e0e0; border: 1px solid #666; padding: 5px; border-radius: 5px; font-size: 1rem; }
-    #tempoValue, #kickPulsesValue, #snarePulsesValue, #hihatPulsesValue { color: #4a90e2; margin-left: 10px; font-size: 1rem; }
+    #tempoValue, #kickPulsesValue, #snarePulsesValue, #hihatPulsesValue, #freeModeStatus { color: #4a90e2; margin-left: 10px; font-size: 1rem; }
     #compass-section { display: none; text-align: center; margin-top: 20px; }
     #compass { width: 200px; height: 200px; margin: 0 auto; }
     #distance-display { color: #4a90e2; font-size: 1.2rem; margin-top: 10px; }
@@ -31,7 +31,7 @@
   </style>
 </head>
 <body>
-  <h1>GPS Euclidean Drum Machine</h1>
+  <h1>Drum Machine</h1>
   <div class="container">
     <div id="status" class="status">Status: Ready</div>
 
@@ -52,11 +52,11 @@
       <h2>Share Location</h2>
       <div class="control-group">
         <button id="shareLockBtn">Share Lock Point</button>
-        <input type="text" id="sessionId" readonly placeholder="Click 'Share Lock Point' to generate session ID">
+        <input type="text" id="sessionId" readonly placeholder="Click 'Share Lock Point' to generate URL">
       </div>
       <div class="control-group">
         <button id="joinLockBtn">Join Lock Point</button>
-        <input type="text" id="joinSessionId" placeholder="Enter session ID to join">
+        <input type="text" id="joinSessionId" placeholder="Enter URL to join">
       </div>
     </div>
 
@@ -127,7 +127,6 @@
     </div>
 
     <video id="video" class="hidden" autoplay playsinline></video>
- <a href="http://tokeno.net">tokeno.net</a>
   </div>
 
   <script src="fm-synth.js"></script>
