@@ -694,6 +694,31 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
+  // Toggle button color state
+  const buttonStates = {};
+  const buttons = [
+    elements.lockBtn,
+    elements.testBtn,
+    elements.stopBtn,
+    elements.toggleFreeModeBtn,
+    elements.toggleDirectionBtn,
+    elements.orientationBtn,
+    elements.motionBtn,
+    elements.cameraBtn,
+    elements.lightSensorBtn,
+    elements.micBtn,
+    elements.shareLockBtn,
+    elements.joinLockBtn,
+  ];
+
+  buttons.forEach(button => {
+    buttonStates[button.id] = false; // Initial state: not pressed
+    button.addEventListener("click", () => {
+      buttonStates[button.id] = !buttonStates[button.id];
+      button.classList.toggle("pressed", buttonStates[button.id]);
+    });
+  });
+
   // Debug log to confirm button is found
   console.log("Toggle Free Mode button found:", elements.toggleFreeModeBtn);
 
