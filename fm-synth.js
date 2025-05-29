@@ -11,6 +11,7 @@ let cameraActive = false;
 let lightSensorActive = false;
 let micActive = false;
 let currentHeading = 0;
+let previousHeading = 0; // Track previous heading for direction changes
 let micStream = null;
 let analyser = null;
 let isPlaying = false;
@@ -42,7 +43,7 @@ function log(msg, isError = false) {
   }
 }
 
-// Euclidean rhythm generator
+// Euclidean rhythm generator with rotation
 function generateEuclideanRhythm(k, n, rotation = 0) {
   if (k > n) k = n;
   if (k < 0) k = 0;
@@ -169,9 +170,13 @@ function playSample(buffer, gainNode, time, pitch = 1.0) {
 function scheduleNotes() {
   while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
     const secondsPerBeat = 60.0 / tempo;
-    const kickPattern = generateEuclideanRhythm(kickPulses, steps, Math.floor(currentHeading / 45));
-    const snarePattern = generateEuclideanRhythm(snarePulses, steps, Math.floor(currentHeading / 45));
-    const hihatPattern = generateEuclideanRhythm(hihatPulses, steps, Math.floor(currentHeading / 45));
+    const headingRotation = Math.floor(currentHeading / 45);
+    // Add random variation to rotation when direction changes significantly
+    const headingChange = Math.abs(currentHeading - previousHeading);
+    const randomOffset = headingChange > 10 ? Math.floor(Math.random() * 3) - 1 : 0; // Random offset between -1 and 1
+    const kickPattern = generateEuclideanRhythm(kickPulses, steps, headingRotation + randomOffset);
+    const snarePattern = generateEuclideanRhythm(snarePulses, steps, headingRotation + randomOffset);
+    const hihatPattern = generateEuclideanRhythm(hihatPulses, steps, headingRotation + randomOffset);
 
     for (let i = 0; i < steps; i++) {
       const time = nextNoteTime + i * (secondsPerBeat / steps);
@@ -181,12 +186,13 @@ function scheduleNotes() {
     }
     nextNoteTime += secondsPerBeat;
   }
+  previousHeading = currentHeading; // Update previous heading for next iteration
 }
 
 function startScheduler() {
   if (!isPlaying) {
     isPlaying = true;
-    nextNoteTime = audioCtx.currentTime;
+    nextNoteTime = audioCtx.currentTime; // Reset to ensure new tempo takes effect
     scheduleNotes();
     lookaheadInterval = setInterval(scheduleNotes, 25);
     log("Drum machine started");
@@ -261,7 +267,9 @@ async function startGpsTracking() {
     lockPosition = position.coords;
     tempo = 20; // Start at 20 BPM when locking GPS
     updateTempo(0); // Update display with initial 20 BPM
+    nextNoteTime = audioCtx.currentTime; // Reset to apply new tempo immediately
     log(`GPS position locked: Lat ${lockPosition.latitude.toFixed(4)}, Lon ${lockPosition.longitude.toFixed(4)}`);
+    log(`Initial tempo set to: ${tempo} BPM`);
 
     watchId = navigator.geolocation.watchPosition(
       pos => {
