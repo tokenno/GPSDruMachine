@@ -556,6 +556,83 @@ async function initMicrophone() {
   }
 }
 
+function shareLockPoint() {
+  if (!lockPosition) {
+    log("No lock position set. Please lock GPS first.", true);
+    return;
+  }
+
+  const { latitude, longitude } = lockPosition;
+  const baseUrl = window.location.origin || "https://drum-machine.app"; // Fallback URL
+  const shareUrl = `${baseUrl}?lat=${latitude.toFixed(6)}&lon=${longitude.toFixed(6)}`;
+  const shareInput = document.getElementById("shareUrl");
+  shareInput.value = shareUrl;
+  shareInput.select();
+  try {
+    navigator.clipboard.writeText(shareUrl);
+    log("Lock Point URL copied to clipboard! Share it with another user.");
+  } catch (err) {
+    log("Failed to copy URL to clipboard. Please copy manually.", true);
+  }
+}
+
+function joinLockPoint() {
+  const joinInput = document.getElementById("joinUrl").value;
+  if (!joinInput) {
+    log("Please enter a shared URL to join.", true);
+    return;
+  }
+
+  try {
+    const url = new URL(joinInput);
+    const lat = parseFloat(url.searchParams.get("lat"));
+    const lon = parseFloat(url.searchParams.get("lon"));
+
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      log("Invalid coordinates in the URL.", true);
+      return;
+    }
+
+    // Update lockPosition with the shared coordinates
+    lockPosition = { latitude: lat, longitude: lon };
+    tempo = 20; // Reset tempo to 20 BPM
+    updateTempo(0);
+    nextNoteTime = audioCtx.currentTime; // Reset to apply new tempo immediately
+    log(`Locked onto shared position: Lat ${lat.toFixed(4)}, Lon ${lon.toFixed(4)}`);
+
+    // Start tracking and playing
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    watchId = navigator.geolocation.watchPosition(
+      pos => {
+        if (!lockPosition) {
+          log("Lock position not set", true);
+          return;
+        }
+        const distance = calculateDistance(pos.coords, lockPosition);
+        updateTempo(distance);
+        if (isPlaying) scheduleNotes();
+        
+        if (currentHeading !== null) {
+          const bearing = calculateBearing(pos.coords, lockPosition);
+          updateCompassDisplay(distance, bearing);
+        }
+      },
+      err => {
+        log(`GPS error: ${err.message}`, true);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+
+    compassSection.style.display = "block";
+    if (!isPlaying) startScheduler();
+  } catch (err) {
+    log(`Failed to join Lock Point: ${err.message}`, true);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   compassSection = document.getElementById("compass-section");
   compassSvg = document.getElementById("compass");
@@ -576,6 +653,8 @@ document.addEventListener("DOMContentLoaded", () => {
     snarePulsesInput: document.getElementById("snarePulses"),
     hihatPulsesInput: document.getElementById("hihatPulses"),
     distanceBandSelect: document.getElementById("distanceBand"),
+    shareLockBtn: document.getElementById("shareLockBtn"),
+    joinLockBtn: document.getElementById("joinLockBtn"),
   };
 
   if (Object.values(elements).some(el => !el)) {
@@ -712,5 +791,18 @@ document.addEventListener("DOMContentLoaded", () => {
     await audioCtx?.resume();
     distanceBand = parseFloat(e.target.value);
     log(`Distance band changed to ${distanceBand} meters`);
+  });
+
+  elements.shareLockBtn.addEventListener("click", () => {
+    console.log("Share Lock Point button clicked");
+    shareLockPoint();
+  });
+
+  elements.joinLockBtn.addEventListener("click", async () => {
+    console.log("Join Lock Point button clicked");
+    const audioSuccess = await initAudio();
+    if (audioSuccess) {
+      joinLockPoint();
+    }
   });
 });

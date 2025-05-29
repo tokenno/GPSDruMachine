@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Drum Machine</title>
+  <title>Drum Machine - Professional Dark Theme</title>
   <style>
     * {
       margin: 0;
@@ -109,6 +109,17 @@
       accent-color: #4a90e2;
     }
 
+    input[type="text"] {
+      background-color: #424242;
+      color: #e0e0e0;
+      border: 1px solid #666;
+      padding: 5px;
+      border-radius: 5px;
+      font-size: 1rem;
+      width: 100%;
+      max-width: 300px;
+    }
+
     select {
       background-color: #424242;
       color: #e0e0e0;
@@ -156,7 +167,7 @@
   </style>
 </head>
 <body>
-  <h1>GPS Euclidean Drum Machine</h1>
+  <h1>Drum Machine</h1>
   <div class="container">
     <div id="status" class="status">Status: Ready</div>
 
@@ -167,6 +178,19 @@
         <button id="lockBtn">Lock GPS</button>
         <button id="testBtn">Test Audio</button>
         <button id="stopBtn">Stop Audio</button>
+      </div>
+    </div>
+
+    <!-- Share and Join Lock Point -->
+    <div class="section">
+      <h2>Share Location</h2>
+      <div class="control-group">
+        <button id="shareLockBtn">Share Lock Point</button>
+        <input type="text" id="shareUrl" readonly placeholder="Click 'Share Lock Point' to generate URL">
+      </div>
+      <div class="control-group">
+        <button id="joinLockBtn">Join Lock Point</button>
+        <input type="text" id="joinUrl" placeholder="Paste shared URL here">
       </div>
     </div>
 
@@ -241,12 +265,5 @@
   </div>
 
   <script src="fm-synth.js"></script>
-
-
-    <footer>
-      <a href="http://tokeno.net">tokeno.net</a>
-   
-    </footer>
-  
 </body>
 </html>
