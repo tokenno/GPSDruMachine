@@ -118,7 +118,7 @@ async function initAudio() {
       if (!snareBuffer) throw new Error("Failed to load snare sample");
     }
     if (!hihatBuffer) {
-      hihatBuffer = await loadSample('hihat.wav');
+      hihatBuffer = await loadSample('hat.aif');
       if (!hihatBuffer) throw new Error("Failed to load hi-hat sample");
     }
 
