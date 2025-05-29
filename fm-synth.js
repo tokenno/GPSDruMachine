@@ -171,9 +171,33 @@ function scheduleNotes() {
   while (nextNoteTime < audioCtx.currentTime + scheduleAheadTime) {
     const secondsPerBeat = 60.0 / tempo;
     const headingRotation = Math.floor(currentHeading / 45);
-    // Add random variation to rotation when direction changes significantly
+    // Detect heading change for orientation-based randomness
     const headingChange = Math.abs(currentHeading - previousHeading);
-    const randomOffset = headingChange > 10 ? Math.floor(Math.random() * 3) - 1 : 0; // Random offset between -1 and 1
+    const randomOffset = headingChange > 10 ? Math.floor(Math.random() * 3) - 1 : 0; // Random offset between -1 and 1 for rotation
+
+    // Apply independent random variations to pulses for each drum type when heading changes
+    if (headingChange > 10 && !orientationActive) { // Only if orientation is not overriding pulses
+      kickPulses = Math.max(1, Math.min(8, kickPulses + (Math.floor(Math.random() * 3) - 1))); // Random change between -1 and 1
+      snarePulses = Math.max(1, Math.min(8, snarePulses + (Math.floor(Math.random() * 3) - 1))); // Independent random change
+      hihatPulses = Math.max(1, Math.min(16, hihatPulses + (Math.floor(Math.random() * 3) - 1))); // Independent random change for hi-hat
+
+      // Update UI to reflect new pulse values
+      document.getElementById("kickPulses").value = kickPulses;
+      document.getElementById("kickPulsesValue").textContent = `${kickPulses} pulses`;
+      document.getElementById("kickPulses").setAttribute("aria-valuenow", kickPulses);
+
+      document.getElementById("snarePulses").value = snarePulses;
+      document.getElementById("snarePulsesValue").textContent = `${snarePulses} pulses`;
+      document.getElementById("snarePulses").setAttribute("aria-valuenow", snarePulses);
+
+      document.getElementById("hihatPulses").value = hihatPulses;
+      document.getElementById("hihatPulsesValue").textContent = `${hihatPulses} pulses`;
+      document.getElementById("hihatPulses").setAttribute("aria-valuenow", hihatPulses);
+
+      log(`Pulses randomized - Kick: ${kickPulses}, Snare: ${snarePulses}, Hi-Hat: ${hihatPulses}`);
+    }
+
+    // Generate rhythms with the random rotation offset
     const kickPattern = generateEuclideanRhythm(kickPulses, steps, headingRotation + randomOffset);
     const snarePattern = generateEuclideanRhythm(snarePulses, steps, headingRotation + randomOffset);
     const hihatPattern = generateEuclideanRhythm(hihatPulses, steps, headingRotation + randomOffset);

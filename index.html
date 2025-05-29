@@ -3,120 +3,250 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GPSDruMachine</title>
+  <title>Drum Machine - Professional Dark Theme</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f0f0f0; }
-    .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
-    .status { margin-bottom: 20px; padding: 10px; border-radius: 4px; }
-    .status.success { background: #d4edda; color: #155724; }
-    .status.error { background: #f8d7da; color: #721c24; }
-    .controls, .settings, .navigation { margin: 20px 0; }
-    .control-group { margin-bottom: 15px; }
-    button { padding: 10px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #0056b3; }
-    input[type=range] { width: 100%; }
-    select { padding: 5px; margin: 5px; }
-    video { display: none; width: 100%; max-width: 300px; margin-top: 10px; }
-    .hidden { display: none; }
-    .compass-container { text-align: center; }
-    .compass-container svg { width: 200px; height: 200px; }
-    .distance-display { font-size: 1.2em; margin-top: 10px; }
-    footer { margin-top: 20px; text-align: center; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      background-color: #1a1a1a;
+      color: #e0e0e0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    h1 {
+      color: #ffffff;
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .container {
+      background-color: #2a2a2a;
+      border-radius: 10px;
+      padding: 20px;
+      width: 100%;
+      max-width: 600px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      background-color: #353535;
+      border-radius: 8px;
+    }
+
+    .section h2 {
+      color: #4a90e2;
+      font-size: 1.5rem;
+      margin-bottom: 10px;
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      text-align: center;
+      font-size: 1rem;
+    }
+
+    .status.success {
+      background-color: #2e7d32;
+      color: #ffffff;
+    }
+
+    .status.error {
+      background-color: #d32f2f;
+      color: #ffffff;
+    }
+
+    button {
+      background-color: #4a90e2;
+      color: #ffffff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 1rem;
+      margin: 5px;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #357abd;
+    }
+
+    button:disabled {
+      background-color: #666;
+      cursor: not-allowed;
+    }
+
+    .control-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    label {
+      font-size: 1rem;
+      margin-right: 10px;
+      color: #b0b0b0;
+    }
+
+    input[type="range"] {
+      width: 150px;
+      accent-color: #4a90e2;
+    }
+
+    select {
+      background-color: #424242;
+      color: #e0e0e0;
+      border: 1px solid #666;
+      padding: 5px;
+      border-radius: 5px;
+      font-size: 1rem;
+    }
+
+    #tempoValue, #kickPulsesValue, #snarePulsesValue, #hihatPulsesValue {
+      color: #4a90e2;
+      margin-left: 10px;
+      font-size: 1rem;
+    }
+
+    #compass-section {
+      display: none;
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    #compass {
+      width: 200px;
+      height: 200px;
+      margin: 0 auto;
+    }
+
+    #distance-display {
+      color: #4a90e2;
+      font-size: 1.2rem;
+      margin-top: 10px;
+    }
+
+    #video {
+      display: none;
+      width: 100%;
+      max-width: 300px;
+      margin: 10px auto;
+      border-radius: 5px;
+    }
+
+    .hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
+  <h1>Drum Machine</h1>
   <div class="container">
-    <h1>GPSynthesizer</h1>
-    <p>A web-based drum machine generating Euclidean rhythms modulated by real-world inputs.</p>
+    <div id="status" class="status">Status: Ready</div>
 
-    <div class="status" id="status">Status: Ready</div>
+    <!-- GPS and Playback Controls -->
+    <div class="section">
+      <h2>GPS & Playback</h2>
+      <div class="control-group">
+        <button id="lockBtn">Lock GPS</button>
+        <button id="testBtn">Test Audio</button>
+        <button id="stopBtn">Stop Audio</button>
+      </div>
+    </div>
 
-    <section class="controls">
+    <!-- Sensor Toggles -->
+    <div class="section">
       <h2>Sensor Controls</h2>
       <div class="control-group">
-        <h3>General Controls</h3>
-        <button id="testBtn">Test Audio</button>
-        <button id="lockBtn">Lock GPS</button>
-        <button id="stopBtn">Stop Audio</button>
-        <button id="toggleDirectionBtn">Invert Tempo</button>
-      </div>
-
-      <div class="control-group">
-        <h3>Orientation</h3>
         <button id="orientationBtn">Toggle Orientation</button>
-      </div>
-
-      <div class="control-group">
-        <h3>Accelerometer</h3>
         <button id="motionBtn">Toggle Accelerometer</button>
-      </div>
-
-      <div class="control-group">
-        <h3>Camera</h3>
         <button id="cameraBtn">Toggle Camera</button>
-        <video id="video" autoplay class="hidden"></video>
       </div>
-
       <div class="control-group">
-        <h3>Light Sensor</h3>
         <button id="lightSensorBtn">Toggle Light Sensor</button>
-      </div>
-
-      <div class="control-group">
-        <h3>Microphone</h3>
         <button id="micBtn">Toggle Microphone</button>
       </div>
-    </section>
+    </div>
 
-    <section class="settings">
-      <h2>Drum Machine Settings</h2>
+    <!-- Audio Settings -->
+    <div class="section">
+      <h2>Audio Settings</h2>
       <div class="control-group">
-        <label for="tempo">Tempo (BPM)</label>
-        <span id="tempoValue">120 BPM</span>
+        <label for="distanceBand">Distance Band:</label>
+        <select id="distanceBand" name="distanceBand">
+          <option value="10">10 meters</option>
+          <option value="50">50 meters</option>
+          <option value="100">100 meters</option>
+          <option value="1000">1000 meters</option>
+        </select>
+        <button id="toggleDirectionBtn">Invert Frequency</button>
       </div>
       <div class="control-group">
-        <label for="kickPulses">Kick Pulses</label>
+        <label for="tempoValue">Tempo:</label>
+        <span id="tempoValue">20 BPM</span>
+      </div>
+      <div class="control-group">
+        <label for="kickPulses">Kick Pulses:</label>
         <input type="range" id="kickPulses" min="1" max="8" value="4" aria-valuenow="4">
         <span id="kickPulsesValue">4 pulses</span>
       </div>
       <div class="control-group">
-        <label for="snarePulses">Snare Pulses</label>
+        <label for="snarePulses">Snare Pulses:</label>
         <input type="range" id="snarePulses" min="1" max="8" value="2" aria-valuenow="2">
         <span id="snarePulsesValue">2 pulses</span>
       </div>
       <div class="control-group">
-        <label for="hihatPulses">Hi-Hat Pulses</label>
-        <input type="range" id="hihatPulses" min="1" max="8" value="8" aria-valuenow="8">
+        <label for="hihatPulses">Hi-Hat Pulses:</label>
+        <input type="range" id="hihatPulses" min="1" max="16" value="8" aria-valuenow="8">
         <span id="hihatPulsesValue">8 pulses</span>
       </div>
-      <div class="control-group">
-        <label for="distanceBand">Distance Band (meters)</label>
-     <select id="distanceBand" name="distanceBand">
-  <option value="10">10 meters</option>
-  <option value="50">50 meters</option>
-  <option value="100">100 meters</option>
-  <option value="1000">1000 meters</option> <!-- Added 1 km option -->
-</select>
-      </div>
-    </section>
+    </div>
 
-    <section class="navigation">
-      <h2>Navigation</h2>
-      <div class="compass-container" id="compass-section" style="display: none;">
-        <svg id="compass" viewBox="0 0 200 200">
-          <circle cx="100" cy="100" r="90" fill="none" stroke="#000" stroke-width="5"/>
-          <path id="direction-arrow" d="M100,20 L90,40 L110,40 Z" fill="red"/>
-        </svg>
-        <div class="distance-display" id="distance-display">0m</div>
-      </div>
-    </section>
+    <!-- Compass Display -->
+    <div id="compass-section">
+      <h2>Compass</h2>
+      <svg id="compass" viewBox="0 0 200 200">
+        <circle cx="100" cy="100" r="90" fill="none" stroke="#666" stroke-width="5"/>
+        <line x1="100" y1="10" x2="100" y2="40" stroke="#e0e0e0" stroke-width="3"/>
+        <line x1="100" y1="160" x2="100" y2="190" stroke="#e0e0e0" stroke-width="3"/>
+        <line x1="10" y1="100" x2="40" y2="100" stroke="#e0e0e0" stroke-width="3"/>
+        <line x1="160" y1="100" x2="190" y2="100" stroke="#e0e0e0" stroke-width="3"/>
+        <text x="100" y="30" fill="#e0e0e0" text-anchor="middle">N</text>
+        <text x="100" y="180" fill="#e0e0e0" text-anchor="middle">S</text>
+        <text x="20" y="105" fill="#e0e0e0" text-anchor="middle">W</text>
+        <text x="180" y="105" fill="#e0e0e0" text-anchor="middle">E</text>
+        <path id="direction-arrow" d="M100,50 L80,110 L100,90 L120,110 Z" fill="#4a90e2"/>
+      </svg>
+      <div id="distance-display">0m</div>
+    </div>
 
-    <footer>
-      <a href="http://tokeno.net">tokeno.net</a> |
-      <a href="https://github.com">Github</a>
-    </footer>
+    <!-- Camera Feed -->
+    <video id="video" class="hidden" autoplay playsinline></video>
   </div>
 
   <script src="fm-synth.js"></script>
+
+
+    <footer>
+      <a href="http://tokeno.net">tokeno.net</a>
+   
+    </footer>
+  
 </body>
 </html>
