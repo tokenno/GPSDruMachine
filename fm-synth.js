@@ -28,6 +28,7 @@ let distanceBand = 50;
 let kickGainNode = null;
 let snareGainNode = null;
 let hihatGainNode = null;
+let micPitch = 1.0; // Global variable to store microphone-derived pitch
 
 let freeMode = false;
 let lastPosition = null;
@@ -207,9 +208,9 @@ function scheduleNotes() {
 
     for (let i = 0; i < steps; i++) {
       const time = nextNoteTime + i * (secondsPerBeat / steps);
-      if (kickPattern[i]) playSample(kickBuffer, kickGainNode, time);
-      if (snarePattern[i]) playSample(snareBuffer, snareGainNode, time);
-      if (hihatPattern[i]) playSample(hihatBuffer, hihatGainNode, time);
+      if (kickPattern[i]) playSample(kickBuffer, kickGainNode, time, micPitch);
+      if (snarePattern[i]) playSample(snareBuffer, snareGainNode, time, micPitch);
+      if (hihatPattern[i]) playSample(hihatBuffer, hihatGainNode, time, micPitch);
     }
     nextNoteTime += secondsPerBeat;
   }
@@ -558,8 +559,8 @@ async function initMicrophone() {
       const sampleRate = audioCtx.sampleRate;
       const frequency = (maxIndex * sampleRate) / analyser.fftSize;
       const normalizedFreq = Math.min(Math.max((frequency - 50) / (2000 - 50), 0), 1);
-      const pitch = 0.5 + normalizedFreq * 1.0;
-      log(`Pitch adjusted: ${pitch.toFixed(2)}x (Mic: ${frequency.toFixed(1)} Hz)`);
+      micPitch = 0.5 + normalizedFreq * 1.0; // Update global micPitch
+      log(`Pitch adjusted: ${micPitch.toFixed(2)}x (Mic: ${frequency.toFixed(1)} Hz)`);
       requestAnimationFrame(processMicAudio);
     }
     requestAnimationFrame(processMicAudio);
